@@ -127,7 +127,7 @@ async def create_welcome_image(member):
                 data = io.BytesIO(avatar_bytes)
                 avatar_img = Image.open(data).convert("RGBA")
 
-    avatar_size = 210
+    avatar_size = 210 # Kích thước avatar mong muốn
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
 
     avatar_x = img_width // 2 - avatar_size // 2
@@ -157,22 +157,44 @@ async def create_welcome_image(member):
     stroke_bbox_x = avatar_x - padding_between_avatar_and_stroke - stroke_width
     stroke_bbox_y = avatar_y - padding_between_avatar_and_stroke - stroke_width
     
-    # --- 1. LOẠI BỎ HOÀN TOÀN LỚP NỀN MỜ DƯỚI AVATAR (Như bạn yêu cầu) ---
-    # Phần này đã được bỏ qua. Avatar sẽ được dán trực tiếp sau stroke.
+    # --- 1. VẼ LỚP NỀN MỜ DƯỚI AVATAR (Có màu giống stroke và mờ) ---
+    blur_bg_size_factor = 1.0 # Hệ số kích thước so với avatar. 1.0 = bằng avatar
+    blur_bg_size = int(avatar_size * blur_bg_size_factor) 
+    blur_bg_x = avatar_x + (avatar_size - blur_bg_size) // 2
+    blur_bg_y = avatar_y + (avatar_size - blur_bg_size) // 2
+
+    # Tạo mask antialiasing cho lớp mờ
+    # Kích thước mask thô lớn hơn để làm mượt
+    mask_smooth_raw_size = blur_bg_size + 40 # Thêm đệm để làm mượt tốt hơn
+    blur_bg_mask_raw = Image.new('L', (mask_smooth_raw_size, mask_smooth_raw_size), 0)
+    draw_blur_bg_mask_raw = ImageDraw.Draw(blur_bg_mask_raw)
+    # Vẽ hình tròn trên mask thô, có tính đến đệm
+    draw_blur_bg_mask_raw.ellipse((20, 20, blur_bg_size + 20, blur_bg_size + 20), fill=255) # Bù đệm 20
+    
+    blur_bg_mask_smoothed = blur_bg_mask_raw.resize((blur_bg_size, blur_bg_size), Image.LANCZOS)
+    
+    # Tạo lớp màu giống stroke với độ trong suốt và áp dụng mask
+    blur_color_with_alpha = (*stroke_color_rgb, 100) # Độ trong suốt 100 (điều chỉnh từ 0-255)
+    blur_bg_layer_color = Image.new('RGBA', (blur_bg_size, blur_bg_size), blur_color_with_alpha)
+    blur_bg_layer_color.putalpha(blur_bg_mask_smoothed)
+    
+    # Áp dụng blur và dán vào ảnh chính
+    blur_bg_final = blur_bg_layer_color.filter(ImageFilter.GaussianBlur(radius=10)) # Độ mờ (điều chỉnh)
+    img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
 
 
     # --- 2. VẼ VIỀN STROKE (VIỀN MÀU) - Đảm bảo khoảng trống trong suốt ---
     # Tạo một layer alpha mask cho stroke
-    stroke_mask_size_large = actual_stroke_outer_diameter + 20 # Kích thước lớn hơn để anti-aliasing
+    stroke_mask_size_large = actual_stroke_outer_diameter + 40 # Kích thước lớn hơn để anti-aliasing
     stroke_mask_raw = Image.new('L', (stroke_mask_size_large, stroke_mask_size_large), 0)
     draw_stroke_mask_raw = ImageDraw.Draw(stroke_mask_raw)
 
     # Vẽ vòng tròn ngoài (màu trắng)
-    draw_stroke_mask_raw.ellipse((0, 0, stroke_mask_size_large, stroke_mask_size_large), fill=255)
+    draw_stroke_mask_raw.ellipse((20, 20, stroke_mask_size_large - 20, stroke_mask_size_large - 20), fill=255) # Bù đệm 20
 
     # Vẽ vòng tròn trong (màu đen) để tạo lỗ, kích thước bằng avatar + 2 lần padding,
     # đặt ở vị trí trung tâm của mask thô
-    inner_hole_diameter_raw = avatar_size + (padding_between_avatar_and_stroke * 2) + 20
+    inner_hole_diameter_raw = avatar_size + (padding_between_avatar_and_stroke * 2) + 40
     inner_hole_x_raw = (stroke_mask_size_large - inner_hole_diameter_raw) // 2
     inner_hole_y_raw = (stroke_mask_size_large - inner_hole_diameter_raw) // 2
     draw_stroke_mask_raw.ellipse((inner_hole_x_raw, inner_hole_y_raw,
@@ -189,19 +211,19 @@ async def create_welcome_image(member):
     img.paste(stroke_colored_layer, (stroke_bbox_x, stroke_bbox_y), stroke_colored_layer)
 
 
-    # --- 3. DÁN AVATAR CHÍNH ---
-    # Tăng kích thước mask thô của avatar để chống cắt lẹm hiệu quả hơn và giúp tròn hơn
-    avatar_mask_buffer = 20 # Buffer thêm để mask rộng hơn avatar gốc nhiều hơn
-    avatar_mask_smooth_size = avatar_size + avatar_mask_buffer * 2 # Kích thước lớn hơn cho mask thô
+    # --- 3. DÁN AVATAR CHÍNH (Đảm bảo đúng kích thước và tròn hoàn hảo) ---
+    # Tăng kích thước mask thô của avatar nhiều hơn nữa để chống cắt lẹm và làm tròn
+    avatar_mask_buffer = 40 # Buffer lớn hơn để mask rộng hơn avatar gốc nhiều hơn
+    avatar_mask_raw_size = avatar_size + avatar_mask_buffer * 2 # Kích thước lớn hơn cho mask thô
     
-    avatar_circular_mask_raw = Image.new('L', (avatar_mask_smooth_size, avatar_mask_smooth_size), 0)
+    avatar_circular_mask_raw = Image.new('L', (avatar_mask_raw_size, avatar_mask_raw_size), 0)
     draw_avatar_circular_mask_raw = ImageDraw.Draw(avatar_circular_mask_raw)
     
     # Vẽ hình elip trên mask thô (vị trí (buffer, buffer) là để hình tròn nằm giữa)
     draw_avatar_circular_mask_raw.ellipse((avatar_mask_buffer, avatar_mask_buffer, 
                                            avatar_size + avatar_mask_buffer, avatar_size + avatar_mask_buffer), fill=255)
     
-    # Thu nhỏ mask thô về kích thước avatar thật sự
+    # Thu nhỏ mask thô về kích thước avatar thật sự (avatar_size)
     avatar_circular_mask_smoothed = avatar_circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
 
     try:
@@ -210,6 +232,7 @@ async def create_welcome_image(member):
         original_alpha = Image.new('L', avatar_img.size, 255)
 
     # Kết hợp mask hình tròn mượt mà với kênh alpha gốc của avatar
+    # Đảm bảo avatar được dán đúng kích thước avatar_size
     combined_alpha_mask = Image.composite(avatar_circular_mask_smoothed, Image.new('L', avatar_circular_mask_smoothed.size, 0), original_alpha)
     img.paste(avatar_img, (avatar_x, avatar_y), combined_alpha_mask)
 
