@@ -307,11 +307,22 @@ async def create_welcome_image(member):
 async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
-    try:
-        synced = await bot.tree.sync()
-        print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
-    except Exception as e:
-        print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
+    # --- START CÓ THAY ĐỔI Ở ĐÂY ---
+    # Chỉ đồng bộ slash commands nếu biến môi trường SYNC_SLASH_COMMANDS được đặt là "True"
+    # Bạn sẽ cần đặt biến môi trường này trên Render (ví dụ: SYNC_SLASH_COMMANDS = True)
+    # Sau khi đồng bộ thành công lần đầu, bạn có thể xóa biến này hoặc đặt nó thành False
+    # và deploy lại để tránh đồng bộ không cần thiết.
+    if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
+        try:
+            synced = await bot.tree.sync()
+            print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
+            # OPTIONAL: Nếu muốn tự động tắt biến môi trường sau khi sync (cần tùy chỉnh thêm)
+            # print("Hãy nhớ tắt biến môi trường SYNC_SLASH_COMMANDS trên Render để tránh đồng bộ lại không cần thiết.")
+        except Exception as e:
+            print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
+    else:
+        print("Bỏ qua việc đồng bộ slash commands. Để đồng bộ, hãy đặt biến môi trường SYNC_SLASH_COMMANDS = 'True'.")
+    # --- END CÓ THAY ĐỔI Ở ĐÂY ---
 
 @bot.event
 async def on_member_join(member):
@@ -342,7 +353,7 @@ async def on_member_join(member):
 @app_commands.checks.has_permissions(administrator=True)
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
-    await interaction.response.defer(thinking=True)
+    await interaction.response.defer(thinking=True) # Giữ nguyên defer ở đây
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
@@ -354,6 +365,8 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
 # --- Để bot luôn online trên Replit (Bạn có thể xóa phần này nếu chỉ dùng Render) ---
+# NHẮC LẠI: Phần này VẪN CẦN THIẾT cho Render Free Tier để chống spin down,
+# cùng với UptimeRobot.
 from flask import Flask
 from threading import Thread
 
