@@ -171,16 +171,17 @@ async def create_welcome_image(member):
 
     stroke_color = (*stroke_color_rgb, 255)
 
-    # --- KHOẢNG CÁCH GIỮA AVATAR VÀ STROKE ---
+    # --- KHOẢNG CÁCH GIỮA AVATAR VÀ STROKE (Tạo khoảng trống) ---
     padding_between_avatar_and_stroke = 5 # Điều chỉnh giá trị này để thay đổi khoảng cách
 
-    # --- KÍCH THƯỚC VÀ VỊ TRÍ MỚI CHO STROKE VÀ CÁC THÀNH PHẦN KHÁC DỰA TRÊN PADDING ---
+    # --- KÍCH THƯỚC VÀ VỊ TRÍ CHO STROKE ---
     stroke_width = 6
+    # Stroke_outer_size bao gồm avatar + 2 lần padding + 2 lần stroke_width
     stroke_outer_size = avatar_size + (padding_between_avatar_and_stroke * 2) + (stroke_width * 2)
     stroke_x = avatar_x - padding_between_avatar_and_stroke - stroke_width
     stroke_y = avatar_y - padding_between_avatar_and_stroke - stroke_width
 
-    # --- VẼ HIỆU ỨNG GLOW CHO STROKE (LỚP DƯỚI CÙNG) ---
+    # --- 1. VẼ HIỆU ỨNG GLOW (LỚP DƯỚI CÙNG) ---
     glow_outer_size = stroke_outer_size + 40 # Glow sẽ lớn hơn stroke
     glow_x = stroke_x - (glow_outer_size - stroke_outer_size) // 2
     glow_y = stroke_y - (glow_outer_size - stroke_outer_size) // 2
@@ -196,12 +197,13 @@ async def create_welcome_image(member):
     glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=10))
     img.paste(glow_layer, (0, 0), glow_layer)
 
-    # --- VẼ VIỀN STROKE (VIỀN MÀU) ---
+
+    # --- 2. VẼ VIỀN STROKE (VIỀN MÀU) ---
     stroke_temp_img = Image.new('RGBA', (stroke_outer_size, stroke_outer_size), (0, 0, 0, 0))
     draw_stroke_temp = ImageDraw.Draw(stroke_temp_img)
     draw_stroke_temp.ellipse((0, 0, stroke_outer_size, stroke_outer_size), fill=stroke_color)
 
-    # Đục lỗ bên trong để tạo thành viền
+    # Đục lỗ bên trong để tạo thành viền (lỗ này bao gồm avatar và khoảng trống)
     inner_hole_size_stroke = avatar_size + (padding_between_avatar_and_stroke * 2)
     inner_hole_x_stroke = (stroke_outer_size - inner_hole_size_stroke) // 2
     inner_hole_y_stroke = (stroke_outer_size - inner_hole_size_stroke) // 2
@@ -214,34 +216,27 @@ async def create_welcome_image(member):
     img.paste(stroke_temp_img, (stroke_x, stroke_y), stroke_temp_img)
 
 
-    # --- VẼ VIỀN TRONG SUỐT (NẰM NGOÀI STROKE) ---
-    transparent_border_width = 3
-    transparent_border_outer_size = stroke_outer_size + (transparent_border_width * 2)
-    transparent_border_x = stroke_x - transparent_border_width
-    transparent_border_y = stroke_y - transparent_border_width
+    # --- 3. VẼ LỚP NỀN MỜ DƯỚI AVATAR (LỚP TRONG XUỐT MÀ BẠN KHOANH TRÒN) ---
+    # Lớp này nằm ngay dưới avatar, có kích thước tương đương với avatar, hoặc lớn hơn một chút
+    avatar_background_blur_size = avatar_size # Có thể tăng thêm 5-10 pixel nếu muốn nó rộng hơn avatar một chút
+    avatar_background_blur_x = avatar_x - (avatar_background_blur_size - avatar_size) // 2
+    avatar_background_blur_y = avatar_y - (avatar_background_blur_size - avatar_size) // 2
 
-    transparent_border_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    draw_transparent_border = ImageDraw.Draw(transparent_border_layer)
+    avatar_background_blur_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    draw_blur_bg = ImageDraw.Draw(avatar_background_blur_layer)
 
-    draw_transparent_border.ellipse((transparent_border_x, transparent_border_y,
-                                      transparent_border_x + transparent_border_outer_size,
-                                      transparent_border_y + transparent_border_outer_size),
-                                     fill=(0, 0, 0, 80)) # Màu đen với độ trong suốt 80
+    # Vẽ hình tròn màu đen với độ trong suốt nhất định
+    draw_blur_bg.ellipse((avatar_background_blur_x, avatar_background_blur_y,
+                          avatar_background_blur_x + avatar_background_blur_size,
+                          avatar_background_blur_y + avatar_background_blur_size),
+                         fill=(0, 0, 0, 100)) # Màu đen với độ trong suốt 100 (điều chỉnh cho phù hợp)
 
-    # Đục lỗ bên trong để tạo thành viền trong suốt
-    inner_hole_size_transparent = stroke_outer_size
-    inner_hole_x_transparent = (transparent_border_outer_size - inner_hole_size_transparent) // 2
-    inner_hole_y_transparent = (transparent_border_outer_size - inner_hole_size_transparent) // 2
-
-    draw_transparent_border.ellipse((transparent_border_x + inner_hole_x_transparent, transparent_border_y + inner_hole_y_transparent,
-                                      transparent_border_x + inner_hole_x_transparent + inner_hole_size_transparent,
-                                      transparent_border_y + inner_hole_y_transparent + inner_hole_size_transparent),
-                                     fill=(0, 0, 0, 0))
-
-    img.paste(transparent_border_layer, (0, 0), transparent_border_layer)
+    # Áp dụng blur cho lớp nền mờ
+    avatar_background_blur_layer = avatar_background_blur_layer.filter(ImageFilter.GaussianBlur(radius=5)) # Độ mờ có thể điều chỉnh
+    img.paste(avatar_background_blur_layer, (0, 0), avatar_background_blur_layer)
 
 
-    # --- DÁN AVATAR CHÍNH (LỚP TRÊN CÙNG) ---
+    # --- 4. DÁN AVATAR CHÍNH (LỚP TRÊN CÙNG) ---
     avatar_circular_mask = Image.new('L', (avatar_size, avatar_size), 0)
     draw_avatar_circular_mask = ImageDraw.Draw(avatar_circular_mask)
     draw_avatar_circular_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
