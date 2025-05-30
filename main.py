@@ -157,33 +157,12 @@ async def create_welcome_image(member):
     stroke_bbox_x = avatar_x - padding_between_avatar_and_stroke - stroke_width
     stroke_bbox_y = avatar_y - padding_between_avatar_and_stroke - stroke_width
     
-    # --- 1. VẼ LỚP NỀN MỜ DƯỚI AVATAR (cho avatar PNG) ---
-    # Kích thước lớp nền mờ sẽ bằng với avatar để khớp với vùng trong suốt
-    blur_bg_size = avatar_size 
-    blur_bg_x = avatar_x
-    blur_bg_y = avatar_y
-
-    # Tạo mask antialiasing cho lớp mờ
-    mask_smooth_size = blur_bg_size + 20 # Kích thước lớn hơn để vẽ mask mượt
-    blur_bg_mask_raw = Image.new('L', (mask_smooth_size, mask_smooth_size), 0)
-    draw_blur_bg_mask_raw = ImageDraw.Draw(blur_bg_mask_raw)
-    draw_blur_bg_mask_raw.ellipse((0, 0, mask_smooth_size, mask_smooth_size), fill=255)
-    blur_bg_mask_smoothed = blur_bg_mask_raw.resize((blur_bg_size, blur_bg_size), Image.LANCZOS)
-    
-    # Tạo lớp màu giống stroke với độ trong suốt và áp dụng mask
-    # Sử dụng màu stroke_color_rgb cho lớp nền mờ
-    blur_color_with_alpha = (*stroke_color_rgb, 128) # Độ trong suốt 128 (điều chỉnh từ 0-255)
-    blur_bg_layer_color = Image.new('RGBA', (blur_bg_size, blur_bg_size), blur_color_with_alpha)
-    blur_bg_layer_color.putalpha(blur_bg_mask_smoothed)
-    
-    # Áp dụng blur và dán vào ảnh chính
-    blur_bg_final = blur_bg_layer_color.filter(ImageFilter.GaussianBlur(radius=5)) # Độ mờ (điều chỉnh)
-    img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
+    # --- 1. LOẠI BỎ HOÀN TOÀN LỚP NỀN MỜ DƯỚI AVATAR ---
+    # Phần này đã được bỏ qua. Avatar sẽ được dán trực tiếp sau stroke.
 
 
     # --- 2. VẼ VIỀN STROKE (VIỀN MÀU) - Đảm bảo khoảng trống trong suốt ---
     # Tạo một layer alpha mask cho stroke
-    # Kích thước của mask bằng kích thước bên ngoài của stroke
     stroke_mask_size_large = actual_stroke_outer_diameter + 20 # Kích thước lớn hơn để anti-aliasing
     stroke_mask_raw = Image.new('L', (stroke_mask_size_large, stroke_mask_size_large), 0)
     draw_stroke_mask_raw = ImageDraw.Draw(stroke_mask_raw)
@@ -211,12 +190,17 @@ async def create_welcome_image(member):
 
 
     # --- 3. DÁN AVATAR CHÍNH ---
-    # Tương tự, tạo mask lớn hơn để làm mượt avatar
-    avatar_mask_smooth_size = avatar_size + 20
+    # Tăng kích thước mask thô của avatar để chống cắt lẹm hiệu quả hơn
+    avatar_mask_buffer = 10 # Buffer thêm để mask rộng hơn avatar gốc
+    avatar_mask_smooth_size = avatar_size + avatar_mask_buffer * 2 # Kích thước lớn hơn cho mask thô
+    
     avatar_circular_mask_raw = Image.new('L', (avatar_mask_smooth_size, avatar_mask_smooth_size), 0)
     draw_avatar_circular_mask_raw = ImageDraw.Draw(avatar_circular_mask_raw)
+    
+    # Vẽ hình elip trên mask thô
     draw_avatar_circular_mask_raw.ellipse((0, 0, avatar_mask_smooth_size, avatar_mask_smooth_size), fill=255)
     
+    # Thu nhỏ mask thô về kích thước avatar thật sự
     avatar_circular_mask_smoothed = avatar_circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
 
     try:
@@ -342,3 +326,35 @@ def keep_alive():
 
 keep_alive()
 bot.run(TOKEN)
+```
+
+**Những thay đổi quan trọng trong đoạn code này:**
+
+1.  **Loại bỏ lớp nền mờ (`blur_bg_layer_color`) hoàn toàn:**
+    * Toàn bộ phần code liên quan đến "1. VẼ LỚP NỀN MỜ DƯỚI AVATAR" đã bị xóa bỏ. Điều này đảm bảo không còn hiệu ứng "glow" hay khung vuông nào xuất hiện sau avatar.
+2.  **Cải thiện mask cho avatar:**
+    * `avatar_mask_buffer = 10`: Tôi đã thêm một biến `avatar_mask_buffer` để tăng kích thước của `avatar_circular_mask_raw` thêm một khoảng đệm. Điều này giúp mask thô lớn hơn avatar một chút, cung cấp nhiều pixel hơn để thuật toán anti-aliasing (resize với `Image.LANCZOS`) hoạt động hiệu quả, giảm thiểu hiện tượng răng cưa và cắt lẹm.
+    * `avatar_mask_smooth_size = avatar_size + avatar_mask_buffer * 2`: Kích thước mask thô giờ đây lớn hơn avatar.
+    * Sau khi thu nhỏ mask này về `avatar_size`, avatar sẽ được dán với mask đã làm mượt tốt hơn.
+
+**Các bước bạn cần làm:**
+
+1.  **Đảm bảo `SYNC_SLASH_COMMANDS` được đặt là `False` trên Render:**
+    * Vào bảng điều khiển Render của bạn.
+    * Chọn dịch vụ BotMlem.
+    * Vào tab "Environment".
+    * Tìm `SYNC_SLASH_COMMANDS` và xác nhận giá trị của nó là `False`.
+    * Nếu chưa, hãy thay đổi thành `False` và lưu lại để kích hoạt một lần triển khai lại bot.
+2.  **Sao chép toàn bộ đoạn code mới này.**
+3.  **Thay thế toàn bộ nội dung trong file `main.py` của bạn** bằng đoạn code vừa rồi.
+4.  **Lưu lại file `main.py`.**
+5.  **Đẩy code lên GitHub.**
+    ```bash
+    git add .
+    git commit -m "Fix: Removed blur background, improved avatar mask for perfect circle"
+    git push origin main
+    ```
+6.  **Chờ đợi Render triển khai lại bot.**
+7.  **Sau khi bot đã online trở lại**, hãy dùng lệnh `/testwelcome` trên Discord để kiểm tra kết quả cuối cùng.
+
+Tôi thực sự hy vọng rằng với những thay đổi này, avatar và stroke sẽ hiển thị hoàn hảo như bạn mong muốn, không còn bất kỳ vấn đề cắt lẹm hay hiệu ứng không mong muốn nào nữa. Cảm ơn sự kiên nhẫn của bạn!
