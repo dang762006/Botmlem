@@ -170,65 +170,88 @@ async def create_welcome_image(member):
 
     stroke_color = (*stroke_color_rgb, 255) 
 
-    # --- 1. TẠO LỚP NỀN MỜ PHÍA SAU AVATAR ---
+    # --- TẠO LỚP NỀN MỜ PHÍA SAU AVATAR ---
     blur_bg_size = avatar_size 
     blur_bg_x = avatar_x
     blur_bg_y = avatar_y
 
-    # Giảm độ trong suốt 50% (alpha = 128)
-    blur_color_with_alpha = (*stroke_color_rgb, 128) # 128 là 50% của 255 (255 * 0.5 = 127.5 ~ 128)
+    blur_color_with_alpha = (*stroke_color_rgb, 128) 
     blur_bg_layer = Image.new('RGBA', (blur_bg_size, blur_bg_size), blur_color_with_alpha)
     
-    # Áp dụng hiệu ứng làm mờ
     blur_bg_final = blur_bg_layer.filter(ImageFilter.GaussianBlur(radius=15)) 
     
     img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
 
 
-    # --- 2. VẼ VIỀN STROKE CHO AVATAR (LOẠI BỎ HOÀN TOÀN GLOW) ---
+    # --- VẼ VIỀN STROKE CHO AVATAR (KHÔNG CÓ GLOW) ---
     stroke_width = 6
-    # Loại bỏ glow_radius vì không còn hiệu ứng glow
 
-    outer_dim = avatar_size + (stroke_width * 2) 
+    # Kích thước ngoài của stroke (bao gồm avatar và viền)
+    outer_dim_stroke = avatar_size + (stroke_width * 2) 
     supersample_factor = 4 
-    supersample_outer_dim = outer_dim * supersample_factor
+    supersample_outer_dim_stroke = outer_dim_stroke * supersample_factor
 
-    temp_stroke_img = Image.new('RGBA', (supersample_outer_dim, supersample_outer_dim), (0, 0, 0, 0))
+    temp_stroke_img = Image.new('RGBA', (supersample_outer_dim_stroke, supersample_outer_dim_stroke), (0, 0, 0, 0))
     draw_temp_stroke = ImageDraw.Draw(temp_stroke_img)
 
     # Vẽ hình elip lớn nhất cho viền stroke
     draw_temp_stroke.ellipse(
-        (0, 0, supersample_outer_dim, supersample_outer_dim), 
+        (0, 0, supersample_outer_dim_stroke, supersample_outer_dim_stroke), 
         fill=stroke_color
     )
 
     # Tạo mask cho phần bên trong để stroke chỉ là viền
-    # Kích thước vòng tròn bên trong là kích thước avatar
-    inner_circle_size_px = avatar_size * supersample_factor
-    inner_circle_offset_x = (supersample_outer_dim - inner_circle_size_px) // 2
-    inner_circle_offset_y = (supersample_outer_dim - inner_circle_size_px) // 2
+    # Kích thước vòng tròn bên trong là kích thước avatar (để avatar vừa khít bên trong)
+    inner_circle_size_px_stroke = avatar_size * supersample_factor
+    inner_circle_offset_x_stroke = (supersample_outer_dim_stroke - inner_circle_size_px_stroke) // 2
+    inner_circle_offset_y_stroke = (supersample_outer_dim_stroke - inner_circle_size_px_stroke) // 2
 
     draw_temp_stroke.ellipse(
-        (inner_circle_offset_x, inner_circle_offset_y,
-         inner_circle_offset_x + inner_circle_size_px, inner_circle_offset_y + inner_circle_size_px),
+        (inner_circle_offset_x_stroke, inner_circle_offset_y_stroke,
+         inner_circle_offset_x_stroke + inner_circle_size_px_stroke, inner_circle_offset_y_stroke + inner_circle_size_px_stroke),
         fill=(0,0,0,0) 
     )
 
     # Resize xuống kích thước thực tế để có hiệu ứng anti-aliasing mượt mà
-    stroke_img_final = temp_stroke_img.resize((outer_dim, outer_dim), Image.LANCZOS)
-
-    # Loại bỏ dòng glow_img = stroke_img_final.filter(ImageFilter.GaussianBlur(radius=glow_radius))
-    # Loại bỏ dòng img.paste(glow_img, (paste_x, paste_y), glow_img)
+    stroke_img_final = temp_stroke_img.resize((outer_dim_stroke, outer_dim_stroke), Image.LANCZOS)
 
     # Tính toán vị trí dán cho viền 
-    paste_x = avatar_x - stroke_width
-    paste_y = avatar_y - stroke_width
+    paste_x_stroke = avatar_x - stroke_width
+    paste_y_stroke = avatar_y - stroke_width
 
-    # Chỉ dán stroke_img_final
-    img.paste(stroke_img_final, (paste_x, paste_y), stroke_img_final)
+    img.paste(stroke_img_final, (paste_x_stroke, paste_y_stroke), stroke_img_final)
 
-    # --- 3. DÁN AVATAR CHÍNH ---
-    img.paste(avatar_img, (avatar_x, avatar_y), avatar_img)
+
+    # --- DÁN AVATAR CHÍNH VÀ ĐẢM BẢO NÓ TRÒN ĐÚNG KÍCH THƯỚC (210x210) ---
+    # Tạo một layer tạm thời để vẽ avatar lên đó và áp dụng mask
+    avatar_layer = Image.new('RGBA', (avatar_size, avatar_size), (0, 0, 0, 0))
+    # Dán avatar lên layer tạm thời (để có thể dùng mask sau)
+    avatar_layer.paste(avatar_img, (0, 0)) 
+
+    # Tạo mask hình tròn cho avatar với kích thước chính xác 210x210
+    # Sử dụng supersampling cho mask để bo tròn mượt hơn
+    mask_supersample_factor = 4
+    mask_raw_size = avatar_size * mask_supersample_factor
+    circular_mask_raw = Image.new('L', (mask_raw_size, mask_raw_size), 0)
+    draw_circular_mask_raw = ImageDraw.Draw(circular_mask_raw)
+    draw_circular_mask_raw.ellipse((0, 0, mask_raw_size, mask_raw_size), fill=255)
+    
+    # Thu nhỏ mask thô về kích thước avatar thật sự (avatar_size)
+    circular_mask_smoothed = circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
+
+    # Áp dụng mask hình tròn lên avatar_layer
+    # Lấy kênh alpha của avatar gốc (nếu có)
+    try:
+        original_alpha = avatar_layer.split()[3]
+    except ValueError: # Nếu avatar không có kênh alpha (ví dụ: JPG), tạo kênh alpha hoàn toàn đục
+        original_alpha = Image.new('L', avatar_layer.size, 255)
+
+    # Kết hợp mask hình tròn mượt mà với kênh alpha gốc của avatar
+    # Điều này đảm bảo nếu avatar gốc có phần trong suốt, phần trong suốt đó vẫn được giữ
+    final_alpha_mask = Image.composite(circular_mask_smoothed, Image.new('L', circular_mask_smoothed.size, 0), original_alpha)
+
+    # Dán avatar đã được cắt tròn lên ảnh chính, sử dụng mask
+    img.paste(avatar_layer, (avatar_x, avatar_y), final_alpha_mask)
 
 
     y_offset_from_avatar = 20 
