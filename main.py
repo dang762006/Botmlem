@@ -209,6 +209,21 @@ async def create_welcome_image(member):
     # Dán lớp glow vào ảnh chính
     img.paste(glow_layer, (0, 0), glow_layer)
 
+    # --- VẼ VIỀN TRONG SUỐT GIỮA GLOW VÀ AVATAR ---
+    transparent_stroke_width = 3  # Độ dày của viền trong suốt
+    transparent_stroke_outer_size = avatar_size + (transparent_stroke_width * 2)
+    transparent_stroke_x = avatar_x - transparent_stroke_width
+    transparent_stroke_y = avatar_y - transparent_stroke_width
+
+    # Tạo một hình ảnh tạm thời chỉ chứa viền trong suốt
+    transparent_stroke_temp_img = Image.new('RGBA', (transparent_stroke_outer_size, transparent_stroke_outer_size), (0, 0, 0, 0))
+    draw_transparent_stroke = ImageDraw.Draw(transparent_stroke_temp_img)
+
+    # Vẽ vòng tròn trong suốt
+    draw_transparent_stroke.ellipse((0, 0, transparent_stroke_outer_size, transparent_stroke_outer_size), fill=(0, 0, 0, 80)) # Màu đen với alpha = 80 (độ trong suốt)
+
+    # Dán viền trong suốt vào ảnh chính
+    img.paste(transparent_stroke_temp_img, (transparent_stroke_x, transparent_stroke_y), transparent_stroke_temp_img)
 
     # --- VẼ VIỀN STROKE CHO AVATAR ---
     stroke_width = 6 # Độ dày của viền
