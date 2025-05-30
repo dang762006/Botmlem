@@ -183,7 +183,34 @@ async def create_welcome_image(member):
 
     stroke_color = (*stroke_color_rgb, 255)
 
-    # --- VẼ VIỀN STROKE ĐƠN GIẢN CHO AVATAR (KHÔNG GLOW) ---
+    # --- START CÓ THAY ĐỔI Ở ĐÂY ĐỂ VẼ HIỆU ỨNG GLOW CHO AVATAR VÀ VIỀN ---
+    # Kích thước của vòng tròn bao quanh avatar (bao gồm cả glow)
+    glow_outer_size = avatar_size + 40 # Thêm kích thước cho hiệu ứng glow
+    glow_x = avatar_x - (glow_outer_size - avatar_size) // 2
+    glow_y = avatar_y - (glow_outer_size - avatar_size) // 2
+
+    # Tạo một lớp ảnh tạm thời cho hiệu ứng glow
+    glow_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    draw_glow = ImageDraw.Draw(glow_layer)
+
+    # Tính toán alpha dựa trên độ sáng của stroke color (màu càng sáng, glow càng mờ)
+    _, _, stroke_l = rgb_to_hsl(*stroke_color_rgb)
+    # Clamp alpha between 50 and 200
+    calculated_alpha = int(max(50, min(200, 255 - (stroke_l * 150))))
+    glow_color_with_alpha = (*stroke_color_rgb, calculated_alpha)
+
+
+    # Vẽ hình tròn màu của stroke với độ trong suốt lên lớp glow
+    draw_glow.ellipse((glow_x, glow_y, glow_x + glow_outer_size, glow_y + glow_outer_size), fill=glow_color_with_alpha)
+
+    # Áp dụng bộ lọc Gaussian Blur để tạo hiệu ứng glow
+    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=10)) # Radius có thể điều chỉnh
+
+    # Dán lớp glow vào ảnh chính
+    img.paste(glow_layer, (0, 0), glow_layer)
+
+
+    # --- VẼ VIỀN STROKE CHO AVATAR ---
     stroke_width = 6 # Độ dày của viền
 
     # Kích thước của viền bao quanh avatar
@@ -229,23 +256,10 @@ async def create_welcome_image(member):
     # Kết hợp mask hình tròn với kênh alpha của avatar gốc
     combined_alpha_mask = Image.composite(avatar_circular_mask, Image.new('L', avatar_circular_mask.size, 0), original_alpha)
 
-    # Cách tốt hơn: Tính toán alpha dựa trên độ sáng của stroke color
-    _, _, stroke_l = rgb_to_hsl(*stroke_color_rgb)
-
-    calculated_alpha = int(max(50, min(200, 255 - (stroke_l * 150))))
-    avatar_fill_color = (*stroke_color_rgb, calculated_alpha)
-
-    # Tạo lớp nền cho avatar
-    avatar_bg_layer = Image.new('RGBA', (avatar_size, avatar_size), (0, 0, 0, 0))
-    draw_avatar_bg = ImageDraw.Draw(avatar_bg_layer)
-    # Vẽ hình tròn màu của stroke với độ trong suốt
-    draw_avatar_bg.ellipse((0, 0, avatar_size, avatar_size), fill=avatar_fill_color)
-
-    # Dán lớp nền avatar vào ảnh chính
-    img.paste(avatar_bg_layer, (avatar_x, avatar_y), avatar_bg_layer)
-
-    # Dán avatar lên trên lớp nền, sử dụng mask kết hợp để giữ hình tròn và độ trong suốt gốc
+    # Dán avatar lên trên cùng, sử dụng mask kết hợp để giữ hình tròn và độ trong suốt gốc
     img.paste(avatar_img, (avatar_x, avatar_y), combined_alpha_mask)
+    # --- END CÓ THAY ĐỔI Ở ĐÂY ĐỂ VẼ HIỆU ỨNG GLOW CHO AVATAR VÀ VIỀN ---
+
 
     y_offset_from_avatar = 20
     welcome_text_y_pos = avatar_y + avatar_size + y_offset_from_avatar
@@ -307,7 +321,6 @@ async def create_welcome_image(member):
 async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
-    # --- START CÓ THAY ĐỔI Ở ĐÂY ---
     # CHỈ ĐỒNG BỘ SLASH COMMANDS NẾU BIẾN MÔI TRƯỜNG 'SYNC_SLASH_COMMANDS' ĐƯỢC ĐẶT LÀ 'True'
     # Bạn sẽ cần đặt biến môi trường này trên Render (ví dụ: SYNC_SLASH_COMMANDS = True)
     # SAU KHI ĐỒNG BỘ THÀNH CÔNG LẦN ĐẦU, BẠN NÊN XÓA BIẾN NÀY HOẶC ĐẶT NÓ THÀNH 'False'
@@ -321,7 +334,6 @@ async def on_ready():
             print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
     else:
         print("Bỏ qua việc đồng bộ slash commands. Để đồng bộ lại, hãy đặt biến môi trường SYNC_SLASH_COMMANDS = 'True' và khởi động lại bot.")
-    # --- END CÓ THAY ĐỔI Ở ĐÂY ---
 
 @bot.event
 async def on_member_join(member):
