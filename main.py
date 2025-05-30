@@ -179,38 +179,30 @@ async def create_welcome_image(member):
 
 
     # --- 2. VẼ VIỀN STROKE (VIỀN MÀU) - Đảm bảo khoảng trống trong suốt ---
-    # Tạo một layer để vẽ vòng tròn ngoài của stroke
-    # Vẽ vòng tròn lớn hơn và thu nhỏ để tạo anti-aliasing
-    stroke_outer_circle_mask_size = actual_stroke_outer_diameter + 20
-    stroke_outer_mask_raw = Image.new('L', (stroke_outer_circle_mask_size, stroke_outer_circle_mask_size), 0)
-    draw_stroke_outer_mask_raw = ImageDraw.Draw(stroke_outer_mask_raw)
-    draw_stroke_outer_mask_raw.ellipse((0, 0, stroke_outer_circle_mask_size, stroke_outer_circle_mask_size), fill=255)
-    stroke_outer_mask_smoothed = stroke_outer_mask_raw.resize((actual_stroke_outer_diameter, actual_stroke_outer_diameter), Image.LANCZOS)
+    # Tạo một layer alpha mask cho stroke
+    # Kích thước của mask bằng kích thước bên ngoài của stroke
+    stroke_mask_size_large = actual_stroke_outer_diameter + 20 # Kích thước lớn hơn để anti-aliasing
+    stroke_mask_raw = Image.new('L', (stroke_mask_size_large, stroke_mask_size_large), 0)
+    draw_stroke_mask_raw = ImageDraw.Draw(stroke_mask_raw)
 
-    # Tạo một layer để vẽ vòng tròn trong (lỗ) của stroke
-    # Kích thước lỗ bằng kích thước avatar + 2 lần padding
-    stroke_inner_hole_mask_size = avatar_size + (padding_between_avatar_and_stroke * 2) + 20
-    stroke_inner_mask_raw = Image.new('L', (stroke_inner_hole_mask_size, stroke_inner_hole_mask_size), 0)
-    draw_stroke_inner_mask_raw = ImageDraw.Draw(stroke_inner_mask_raw)
-    draw_stroke_inner_mask_raw.ellipse((0, 0, stroke_inner_hole_mask_size, stroke_inner_hole_mask_size), fill=255)
-    stroke_inner_mask_smoothed = stroke_inner_mask_raw.resize((avatar_size + (padding_between_avatar_and_stroke * 2)), Image.LANCZOS)
+    # Vẽ vòng tròn ngoài (màu trắng)
+    draw_stroke_mask_raw.ellipse((0, 0, stroke_mask_size_large, stroke_mask_size_large), fill=255)
 
-    # Kết hợp hai mask để tạo ra hình vành khăn (stroke)
-    # Vòng tròn ngoài (có màu) - đục lỗ vòng tròn trong (trong suốt)
-    # Cần tạo một layer alpha cho stroke có kích thước bằng stroke_outer_diameter
-    stroke_alpha_layer = Image.new('L', (actual_stroke_outer_diameter, actual_stroke_outer_diameter), 0)
-    
-    # Dán vòng ngoài vào layer alpha
-    stroke_alpha_layer.paste(stroke_outer_mask_smoothed, (0, 0))
+    # Vẽ vòng tròn trong (màu đen) để tạo lỗ, kích thước bằng avatar + 2 lần padding,
+    # đặt ở vị trí trung tâm của mask thô
+    inner_hole_diameter_raw = avatar_size + (padding_between_avatar_and_stroke * 2) + 20
+    inner_hole_x_raw = (stroke_mask_size_large - inner_hole_diameter_raw) // 2
+    inner_hole_y_raw = (stroke_mask_size_large - inner_hole_diameter_raw) // 2
+    draw_stroke_mask_raw.ellipse((inner_hole_x_raw, inner_hole_y_raw,
+                                  inner_hole_x_raw + inner_hole_diameter_raw,
+                                  inner_hole_y_raw + inner_hole_diameter_raw), fill=0)
 
-    # Dán vòng trong (để đục lỗ) vào layer alpha, sử dụng màu 0 để tạo trong suốt
-    inner_hole_paste_x = (actual_stroke_outer_diameter - (avatar_size + (padding_between_avatar_and_stroke * 2))) // 2
-    inner_hole_paste_y = (actual_stroke_outer_diameter - (avatar_size + (padding_between_avatar_and_stroke * 2))) // 2
-    stroke_alpha_layer.paste(stroke_inner_mask_smoothed, (inner_hole_paste_x, inner_hole_paste_y), mask=stroke_inner_mask_smoothed)
+    # Thu nhỏ mask để áp dụng anti-aliasing
+    stroke_alpha_mask_smoothed = stroke_mask_raw.resize((actual_stroke_outer_diameter, actual_stroke_outer_diameter), Image.LANCZOS)
 
     # Tạo layer màu cho stroke và áp dụng alpha mask
     stroke_colored_layer = Image.new('RGBA', (actual_stroke_outer_diameter, actual_stroke_outer_diameter), stroke_color)
-    stroke_colored_layer.putalpha(stroke_alpha_layer) # Đảm bảo vùng trong suốt hoàn toàn
+    stroke_colored_layer.putalpha(stroke_alpha_mask_smoothed)
 
     img.paste(stroke_colored_layer, (stroke_bbox_x, stroke_bbox_y), stroke_colored_layer)
 
@@ -285,14 +277,13 @@ async def create_welcome_image(member):
 # --- Các sự kiện của bot (Đã loại bỏ các print debug) ---
 @bot.event
 async def on_ready():
+    # Chỉ đồng bộ 1 lần khi cần thiết, sau đó đặt SYNC_SLASH_COMMANDS = False
     if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
         try:
             await bot.tree.sync()
         except Exception:
             pass
-    else:
-        pass
-
+    
 @bot.event
 async def on_member_join(member):
     channel_id = 1322848542758277202
@@ -322,7 +313,8 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
     try:
         image_bytes = await create_welcome_image(member_to_test)
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
-    except Exception:
+    except Exception as e: # Giữ lại print e để debug nếu cần
+        # print(f"Lỗi khi test: {e}")
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test.")
 
 from flask import Flask
