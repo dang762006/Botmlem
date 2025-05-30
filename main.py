@@ -188,46 +188,52 @@ async def create_welcome_image(member):
     img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
 
 
-    # --- VẼ VIỀN STROKE CHO AVATAR (CÓ KHOẢNG TRỐNG VÀ KHÔNG CÓ GLOW) ---
-    stroke_width = 6
-    # Khoảng cách giữa stroke và avatar
-    gap_between_stroke_and_avatar = 10 # Điều chỉnh giá trị này để thay đổi khoảng trống
+    # --- VẼ STROKE (VIỀN) CÓ KHOẢNG TRỐNG TRONG SUỐT VỚI AVATAR ---
+    stroke_thickness = 6 # Độ dày của viền stroke
+    gap_size = 10        # Khoảng trống trong suốt giữa stroke và avatar
 
-    # Kích thước ngoài của stroke
-    # Stroke sẽ lớn hơn avatar một khoảng (gap + stroke_width) mỗi bên
-    outer_dim_stroke = avatar_size + (stroke_width * 2) + (gap_between_stroke_and_avatar * 2) 
+    # Kích thước của vòng tròn ngoài cùng của stroke
+    outer_stroke_diameter = avatar_size + (gap_size * 2) + (stroke_thickness * 2) 
     
-    supersample_factor = 4 
-    supersample_outer_dim_stroke = outer_dim_stroke * supersample_factor
+    # Kích thước của vòng tròn bên trong của stroke (tạo khoảng trống trong suốt)
+    inner_stroke_diameter = avatar_size + (gap_size * 2) 
 
-    temp_stroke_img = Image.new('RGBA', (supersample_outer_dim_stroke, supersample_outer_dim_stroke), (0, 0, 0, 0))
-    draw_temp_stroke = ImageDraw.Draw(temp_stroke_img)
+    supersample_factor = 4
+    
+    # Tạo một layer tạm thời lớn hơn để vẽ stroke với anti-aliasing
+    temp_stroke_layer_supersampled = Image.new('RGBA', 
+                                                (outer_stroke_diameter * supersample_factor, outer_stroke_diameter * supersample_factor), 
+                                                (0, 0, 0, 0))
+    draw_temp_stroke = ImageDraw.Draw(temp_stroke_layer_supersampled)
 
-    # Vẽ hình elip lớn nhất cho viền stroke
+    # Vẽ vòng tròn ngoài cùng (màu của stroke)
     draw_temp_stroke.ellipse(
-        (0, 0, supersample_outer_dim_stroke, supersample_outer_dim_stroke), 
+        (0, 0, 
+         outer_stroke_diameter * supersample_factor, outer_stroke_diameter * supersample_factor),
         fill=stroke_color
     )
 
-    # Tạo mask cho phần bên trong để stroke chỉ là viền
-    # Kích thước vòng tròn bên trong phải tương ứng với vị trí avatar + khoảng cách
-    inner_circle_size_px_stroke = (avatar_size + (gap_between_stroke_and_avatar * 2)) * supersample_factor
-    inner_circle_offset_x_stroke = (supersample_outer_dim_stroke - inner_circle_size_px_stroke) // 2
-    inner_circle_offset_y_stroke = (supersample_outer_dim_stroke - inner_circle_size_px_stroke) // 2
+    # Vẽ vòng tròn bên trong (trong suốt) để tạo ra khoảng trống
+    # Tính toán vị trí offset cho vòng tròn bên trong
+    inner_offset_x = (outer_stroke_diameter * supersample_factor - inner_stroke_diameter * supersample_factor) // 2
+    inner_offset_y = (outer_stroke_diameter * supersample_factor - inner_stroke_diameter * supersample_factor) // 2
 
     draw_temp_stroke.ellipse(
-        (inner_circle_offset_x_stroke, inner_circle_offset_y_stroke,
-         inner_circle_offset_x_stroke + inner_circle_size_px_stroke, inner_circle_offset_y_stroke + inner_circle_size_px_stroke),
-        fill=(0,0,0,0) 
+        (inner_offset_x, inner_offset_y,
+         inner_offset_x + inner_stroke_diameter * supersample_factor, inner_offset_y + inner_stroke_diameter * supersample_factor),
+        fill=(0, 0, 0, 0) # Màu trong suốt
     )
 
-    stroke_img_final = temp_stroke_img.resize((outer_dim_stroke, outer_dim_stroke), Image.LANCZOS)
+    # Resize layer stroke về kích thước thực tế để áp dụng anti-aliasing
+    stroke_final_image = temp_stroke_layer_supersampled.resize(
+        (outer_stroke_diameter, outer_stroke_diameter), Image.LANCZOS
+    )
 
-    # Tính toán vị trí dán cho viền để nó căn giữa avatar
-    paste_x_stroke = avatar_x - (stroke_width + gap_between_stroke_and_avatar)
-    paste_y_stroke = avatar_y - (stroke_width + gap_between_stroke_and_avatar)
+    # Tính toán vị trí dán stroke lên ảnh chính
+    stroke_paste_x = avatar_x - gap_size - stroke_thickness
+    stroke_paste_y = avatar_y - gap_size - stroke_thickness
 
-    img.paste(stroke_img_final, (paste_x_stroke, paste_y_stroke), stroke_img_final)
+    img.paste(stroke_final_image, (stroke_paste_x, stroke_paste_y), stroke_final_image)
 
 
     # --- DÁN AVATAR CHÍNH VÀ ĐẢM BẢO NÓ TRÒN ĐÚNG KÍCH THƯỚC (210x210) ---
@@ -311,7 +317,6 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
     try:
-        # Sử dụng os.getenv để kiểm soát việc sync lệnh slash
         if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
             synced = await bot.tree.sync()  
             print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
