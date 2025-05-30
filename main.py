@@ -158,23 +158,26 @@ async def create_welcome_image(member):
     stroke_bbox_y = avatar_y - padding_between_avatar_and_stroke - stroke_width
     
     # --- 1. VẼ LỚP NỀN MỜ DƯỚI AVATAR (cho avatar PNG) ---
-    blur_bg_size_padded = avatar_size + 10 
-    blur_bg_x = avatar_x - (blur_bg_size_padded - avatar_size) // 2
-    blur_bg_y = avatar_y - (blur_bg_size_padded - avatar_size) // 2
+    # Kích thước lớp nền mờ sẽ bằng với avatar để khớp với vùng trong suốt
+    blur_bg_size = avatar_size 
+    blur_bg_x = avatar_x
+    blur_bg_y = avatar_y
 
     # Tạo mask antialiasing cho lớp mờ
-    mask_smooth_size = blur_bg_size_padded + 20 # Kích thước lớn hơn để vẽ mask mượt
+    mask_smooth_size = blur_bg_size + 20 # Kích thước lớn hơn để vẽ mask mượt
     blur_bg_mask_raw = Image.new('L', (mask_smooth_size, mask_smooth_size), 0)
     draw_blur_bg_mask_raw = ImageDraw.Draw(blur_bg_mask_raw)
     draw_blur_bg_mask_raw.ellipse((0, 0, mask_smooth_size, mask_smooth_size), fill=255)
-    blur_bg_mask_smoothed = blur_bg_mask_raw.resize((blur_bg_size_padded, blur_bg_size_padded), Image.LANCZOS)
+    blur_bg_mask_smoothed = blur_bg_mask_raw.resize((blur_bg_size, blur_bg_size), Image.LANCZOS)
     
-    # Tạo lớp màu và áp dụng mask
-    blur_bg_layer_color = Image.new('RGBA', (blur_bg_size_padded, blur_bg_size_padded), (0, 0, 0, 80)) # Màu đen với độ trong suốt 80
+    # Tạo lớp màu giống stroke với độ trong suốt và áp dụng mask
+    # Sử dụng màu stroke_color_rgb cho lớp nền mờ
+    blur_color_with_alpha = (*stroke_color_rgb, 128) # Độ trong suốt 128 (điều chỉnh từ 0-255)
+    blur_bg_layer_color = Image.new('RGBA', (blur_bg_size, blur_bg_size), blur_color_with_alpha)
     blur_bg_layer_color.putalpha(blur_bg_mask_smoothed)
     
     # Áp dụng blur và dán vào ảnh chính
-    blur_bg_final = blur_bg_layer_color.filter(ImageFilter.GaussianBlur(radius=8))
+    blur_bg_final = blur_bg_layer_color.filter(ImageFilter.GaussianBlur(radius=5)) # Độ mờ (điều chỉnh)
     img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
 
 
@@ -274,16 +277,19 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- Các sự kiện của bot (Đã loại bỏ các print debug) ---
+# --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
-    # Chỉ đồng bộ 1 lần khi cần thiết, sau đó đặt SYNC_SLASH_COMMANDS = False
+    # Chỉ đồng bộ 1 lần khi cần thiết, sau đó đặt SYNC_SLASH_COMMANDS = False trên Render
     if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
         try:
             await bot.tree.sync()
-        except Exception:
-            pass
-    
+            print("Đã đồng bộ lệnh slash.")
+        except Exception as e:
+            print(f"Lỗi khi đồng bộ lệnh slash: {e}")
+    else:
+        print("Bot đã sẵn sàng và không đồng bộ lệnh slash.")
+
 @bot.event
 async def on_member_join(member):
     channel_id = 1322848542758277202
@@ -300,7 +306,8 @@ async def on_member_join(member):
         image_bytes = await create_welcome_image(member)
         await channel.send(f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
                            file=discord.File(fp=image_bytes, filename='welcome.png'))
-    except Exception:
+    except Exception as e:
+        print(f"Lỗi khi xử lý thành viên mới {member.display_name}: {e}")
         await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
@@ -313,9 +320,9 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
     try:
         image_bytes = await create_welcome_image(member_to_test)
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
-    except Exception as e: # Giữ lại print e để debug nếu cần
-        # print(f"Lỗi khi test: {e}")
-        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test.")
+    except Exception as e:
+        print(f"Lỗi khi test: {e}")
+        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test. Vui lòng kiểm tra log bot.")
 
 from flask import Flask
 from threading import Thread
