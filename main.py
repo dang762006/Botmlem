@@ -170,12 +170,12 @@ async def create_welcome_image(member):
 
     stroke_color = (*stroke_color_rgb, 255) 
 
-    # --- TẠO LỚP NỀN MỜ HÌNH TRÒN PHÍA SAU AVATAR ---
+    # --- TẠO LỚP NỀN HÌNH TRÒN PHÍA SAU AVATAR (CHỈ OPACITY, KHÔNG BLUR) ---
     blur_bg_size = avatar_size 
     blur_bg_x = avatar_x
     blur_bg_y = avatar_y
 
-    # Màu nền mờ với alpha 50% (128/255)
+    # Màu nền với alpha 50% (128/255)
     blur_color_with_alpha = (*stroke_color_rgb, 128) 
 
     # Tạo một layer tạm thời chỉ chứa hình tròn màu với độ trong suốt
@@ -183,12 +183,9 @@ async def create_welcome_image(member):
     draw_blur_bg_raw = ImageDraw.Draw(blur_bg_raw_circle)
     draw_blur_bg_raw.ellipse((0, 0, blur_bg_size, blur_bg_size), fill=blur_color_with_alpha)
     
-    # Áp dụng hiệu ứng làm mờ (Gaussian Blur) trực tiếp lên hình tròn đó
-    # Tăng radius để mờ hơn nếu cần
-    blur_bg_final = blur_bg_raw_circle.filter(ImageFilter.GaussianBlur(radius=30)) # Tăng radius để mờ hơn
-    
-    # Dán lớp nền mờ này vào ảnh chính
-    img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
+    # Dán lớp nền (hình tròn với độ trong suốt) vào ảnh chính.
+    # KHÔNG ÁP DỤNG GAUSSIAN BLUR
+    img.paste(blur_bg_raw_circle, (blur_bg_x, blur_bg_y), blur_bg_raw_circle)
 
 
     # --- VẼ STROKE (VIỀN) CÓ KHOẢNG TRỐNG TRONG SUỐT VỚI AVATAR ---
@@ -319,9 +316,7 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
     try:
-        # Giữ nguyên phần kiểm tra biến môi trường SYNC_SLASH_COMMANDS
-        # để bạn có thể bật/tắt đồng bộ lệnh slash khi cần trên Render.
-        if os.getenv('SYNC_SLASH_COMMANDS') == 'True': 
+        if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
             synced = await bot.tree.sync()  
             print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
         else:
