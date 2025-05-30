@@ -183,66 +183,63 @@ async def create_welcome_image(member):
 
     stroke_color = (*stroke_color_rgb, 255)
 
-    # --- START CÓ THAY ĐỔI Ở ĐÂY ĐỂ VẼ HIỆU ỨNG GLOW CHO AVATAR VÀ VIỀN ---
-    # Kích thước của vòng tròn bao quanh avatar (bao gồm cả glow)
-    glow_outer_size = avatar_size + 40 # Thêm kích thước cho hiệu ứng glow
+    # --- VẼ HIỆU ỨNG GLOW CHO AVATAR ---
+    glow_outer_size = avatar_size + 40
     glow_x = avatar_x - (glow_outer_size - avatar_size) // 2
     glow_y = avatar_y - (glow_outer_size - avatar_size) // 2
 
-    # Tạo một lớp ảnh tạm thời cho hiệu ứng glow
     glow_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
     draw_glow = ImageDraw.Draw(glow_layer)
 
-    # Tính toán alpha dựa trên độ sáng của stroke color (màu càng sáng, glow càng mờ)
     _, _, stroke_l = rgb_to_hsl(*stroke_color_rgb)
-    # Clamp alpha between 50 and 200
     calculated_alpha = int(max(50, min(200, 255 - (stroke_l * 150))))
     glow_color_with_alpha = (*stroke_color_rgb, calculated_alpha)
 
-
-    # Vẽ hình tròn màu của stroke với độ trong suốt lên lớp glow
     draw_glow.ellipse((glow_x, glow_y, glow_x + glow_outer_size, glow_y + glow_outer_size), fill=glow_color_with_alpha)
-
-    # Áp dụng bộ lọc Gaussian Blur để tạo hiệu ứng glow
-    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=10)) # Radius có thể điều chỉnh
-
-    # Dán lớp glow vào ảnh chính
+    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=10))
     img.paste(glow_layer, (0, 0), glow_layer)
 
-    # --- VẼ VIỀN TRONG SUỐT GIỮA GLOW VÀ AVATAR ---
-    transparent_stroke_width = 3  # Độ dày của viền trong suốt
-    transparent_stroke_outer_size = avatar_size + (transparent_stroke_width * 2)
-    transparent_stroke_x = avatar_x - transparent_stroke_width
-    transparent_stroke_y = avatar_y - transparent_stroke_width
+    # --- VẼ VIỀN TRONG SUỐT NẰM GIỮA STROKE VÀ AVATAR ---
+    # Thay đổi cách vẽ viền trong suốt để đảm bảo nó hiển thị rõ
+    transparent_gap_width = 10 # Độ rộng của khoảng trong suốt
+    transparent_gap_outer_size = avatar_size + (transparent_gap_width * 2)
+    transparent_gap_x = avatar_x - transparent_gap_width
+    transparent_gap_y = avatar_y - transparent_gap_width
 
-    # Tạo một hình ảnh tạm thời chỉ chứa viền trong suốt
-    transparent_stroke_temp_img = Image.new('RGBA', (transparent_stroke_outer_size, transparent_stroke_outer_size), (0, 0, 0, 0))
-    draw_transparent_stroke = ImageDraw.Draw(transparent_stroke_temp_img)
+    # Tạo một layer mới để vẽ viền trong suốt
+    transparent_gap_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    draw_transparent_gap = ImageDraw.Draw(transparent_gap_layer)
 
-    # Vẽ vòng tròn trong suốt
-    draw_transparent_stroke.ellipse((0, 0, transparent_stroke_outer_size, transparent_stroke_outer_size), fill=(0, 0, 0, 80)) # Màu đen với alpha = 80 (độ trong suốt)
+    # Vẽ một hình tròn lớn (sẽ là phần "viền")
+    draw_transparent_gap.ellipse((transparent_gap_x, transparent_gap_y,
+                                  transparent_gap_x + transparent_gap_outer_size,
+                                  transparent_gap_y + transparent_gap_outer_size),
+                                 fill=(0, 0, 0, 120)) # Màu đen với độ trong suốt 120 (mờ)
 
-    # Dán viền trong suốt vào ảnh chính
-    img.paste(transparent_stroke_temp_img, (transparent_stroke_x, transparent_stroke_y), transparent_stroke_temp_img)
+    # Vẽ một hình tròn nhỏ hơn ở giữa để tạo "lỗ" trong suốt (lớp này sẽ che đi phần màu bên dưới)
+    inner_hole_size = avatar_size
+    inner_hole_x = (transparent_gap_outer_size - inner_hole_size) // 2
+    inner_hole_y = (transparent_gap_outer_size - inner_hole_size) // 2
+    
+    draw_transparent_gap.ellipse((transparent_gap_x + inner_hole_x, transparent_gap_y + inner_hole_y,
+                                  transparent_gap_x + inner_hole_x + inner_hole_size,
+                                  transparent_gap_y + inner_hole_y + inner_hole_size),
+                                 fill=(0, 0, 0, 0)) # Hoàn toàn trong suốt
 
-    # --- VẼ VIỀN STROKE CHO AVATAR ---
-    stroke_width = 6 # Độ dày của viền
+    # Dán lớp viền trong suốt lên ảnh chính
+    img.paste(transparent_gap_layer, (0, 0), transparent_gap_layer)
 
-    # Kích thước của viền bao quanh avatar
+
+    # --- VẼ VIỀN STROKE CHO AVATAR (được vẽ sau viền trong suốt) ---
+    stroke_width = 6
     stroke_outer_size = avatar_size + (stroke_width * 2)
-
-    # Vị trí dán viền
     stroke_x = avatar_x - stroke_width
     stroke_y = avatar_y - stroke_width
 
-    # Tạo một hình ảnh tạm thời chỉ chứa viền
     stroke_temp_img = Image.new('RGBA', (stroke_outer_size, stroke_outer_size), (0, 0, 0, 0))
     draw_stroke_temp = ImageDraw.Draw(stroke_temp_img)
-
-    # Vẽ vòng tròn lớn (màu của viền)
     draw_stroke_temp.ellipse((0, 0, stroke_outer_size, stroke_outer_size), fill=stroke_color)
 
-    # Vẽ vòng tròn nhỏ hơn (trong suốt) bên trong để tạo hiệu ứng viền
     inner_circle_size = avatar_size
     inner_circle_x = (stroke_outer_size - inner_circle_size) // 2
     inner_circle_y = (stroke_outer_size - inner_circle_size) // 2
@@ -250,30 +247,22 @@ async def create_welcome_image(member):
     draw_stroke_temp.ellipse(
         (inner_circle_x, inner_circle_y,
          inner_circle_x + inner_circle_size, inner_circle_y + inner_circle_size),
-        fill=(0, 0, 0, 0) # Màu trong suốt
+        fill=(0, 0, 0, 0)
     )
-
-    # Dán viền đã tạo vào ảnh chính
     img.paste(stroke_temp_img, (stroke_x, stroke_y), stroke_temp_img)
 
     # --- Xử lý độ trong suốt của avatar (phần này giữ nguyên) ---
-    # Tạo mask hình tròn cho avatar
     avatar_circular_mask = Image.new('L', (avatar_size, avatar_size), 0)
     draw_avatar_circular_mask = ImageDraw.Draw(avatar_circular_mask)
     draw_avatar_circular_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
 
-    # Lấy kênh alpha của avatar gốc (nếu có)
     try:
         original_alpha = avatar_img.split()[3]
-    except ValueError: # Không có kênh alpha, tạo kênh alpha hoàn toàn đục
+    except ValueError:
         original_alpha = Image.new('L', avatar_img.size, 255)
 
-    # Kết hợp mask hình tròn với kênh alpha của avatar gốc
     combined_alpha_mask = Image.composite(avatar_circular_mask, Image.new('L', avatar_circular_mask.size, 0), original_alpha)
-
-    # Dán avatar lên trên cùng, sử dụng mask kết hợp để giữ hình tròn và độ trong suốt gốc
     img.paste(avatar_img, (avatar_x, avatar_y), combined_alpha_mask)
-    # --- END CÓ THAY ĐỔI Ở ĐÂY ĐỂ VẼ HIỆU ỨNG GLOW CHO AVATAR VÀ VIỀN ---
 
 
     y_offset_from_avatar = 20
@@ -284,13 +273,11 @@ async def create_welcome_image(member):
     welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
     welcome_text_x = (img_width - welcome_text_width) / 2
 
-    # Đổ bóng cho chữ WELCOME: phải đậm và tối hơn
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=0.6, saturation_factor=1.0, clamp_min_l=0.15, clamp_max_l=0.45)
     shadow_color_welcome = (*shadow_color_welcome_rgb, 255)
 
     draw.text((welcome_text_x + shadow_offset, welcome_text_y_pos + shadow_offset),
               welcome_text, font=font_welcome, fill=shadow_color_welcome)
-    # Vẽ chữ WELCOME chính
     draw.text((welcome_text_x, welcome_text_y_pos),
               welcome_text, font=font_welcome, fill=(255, 255, 255))
 
@@ -303,12 +290,10 @@ async def create_welcome_image(member):
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
     name_text_y = welcome_text_y_pos + welcome_actual_height + 10
 
-    # Đổ bóng cho tên người dùng: phải đậm và tối hơn nữa
     shadow_color_name_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=0.5, saturation_factor=1.0, clamp_min_l=0.1, clamp_max_l=0.4)
     shadow_color_name = (*shadow_color_name_rgb, 255)
     draw.text((name_text_x + shadow_offset, name_text_y + shadow_offset),
               name_text, font=font_name, fill=shadow_color_name)
-    # Vẽ tên người dùng chính
     draw.text((name_text_x, name_text_y),
               name_text, font=font_name, fill=stroke_color)
 
@@ -336,10 +321,6 @@ async def create_welcome_image(member):
 async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
-    # CHỈ ĐỒNG BỘ SLASH COMMANDS NẾU BIẾN MÔI TRƯỜNG 'SYNC_SLASH_COMMANDS' ĐƯỢC ĐẶT LÀ 'True'
-    # Bạn sẽ cần đặt biến môi trường này trên Render (ví dụ: SYNC_SLASH_COMMANDS = True)
-    # SAU KHI ĐỒNG BỘ THÀNH CÔNG LẦN ĐẦU, BẠN NÊN XÓA BIẾN NÀY HOẶC ĐẶT NÓ THÀNH 'False'
-    # VÀ DEPLOY LẠI ĐỂ TRÁNH ĐỒNG BỘ KHÔNG CẦN THIẾT KHI BOT KHỞI ĐỘNG LẠI.
     if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
         try:
             synced = await bot.tree.sync()
@@ -379,7 +360,7 @@ async def on_member_join(member):
 @app_commands.checks.has_permissions(administrator=True)
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
-    await interaction.response.defer(thinking=True) # Giữ nguyên defer ở đây
+    await interaction.response.defer(thinking=True)
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
@@ -391,8 +372,6 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
 # --- Để bot luôn online trên Replit (Bạn có thể xóa phần này nếu chỉ dùng Render) ---
-# NHẮC LẠI: Phần này VẪN CẦN THIẾT cho Render Free Tier để chống spin down,
-# cùng với UptimeRobot.
 from flask import Flask
 from threading import Thread
 
@@ -409,8 +388,6 @@ def keep_alive():
     t = Thread(target=run)
     t.start()
 
-# Chạy webserver để giữ bot online
 keep_alive()
 
-# Chạy bot
 bot.run(TOKEN)
