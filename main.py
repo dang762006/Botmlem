@@ -152,7 +152,7 @@ async def create_welcome_image(member):
     padding_between_avatar_and_stroke = 5
     stroke_width = 6
 
-    # --- Kích thước và vị trí của vòng tròn stroke và glow ---
+    # --- Kích thước và vị trí của vòng tròn stroke ---
     # Đường kính bên ngoài của stroke
     actual_stroke_outer_diameter = avatar_size + (padding_between_avatar_and_stroke * 2) + (stroke_width * 2)
     # Vị trí của góc trên bên trái của hình vuông bao quanh stroke
@@ -160,78 +160,67 @@ async def create_welcome_image(member):
     stroke_bbox_y = avatar_y - padding_between_avatar_and_stroke - stroke_width
     
     # --- 1. VẼ LỚP NỀN MỜ DƯỚI AVATAR (cho avatar PNG) ---
-    # Lớp này nằm ngay dưới avatar, kích thước tương đương avatar
-    blur_bg_size = avatar_size + 10 # Lớn hơn avatar một chút để tạo vùng mờ rõ hơn
-    blur_bg_x = avatar_x - (blur_bg_size - avatar_size) // 2
-    blur_bg_y = avatar_y - (blur_bg_size - avatar_size) // 2
-
-    blur_bg_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    draw_blur_bg = ImageDraw.Draw(blur_bg_layer)
-    draw_blur_bg.ellipse((blur_bg_x, blur_bg_y, blur_bg_x + blur_bg_size, blur_bg_y + blur_bg_size),
-                         fill=(0, 0, 0, 80)) # Màu đen với độ trong suốt 80 (điều chỉnh)
-    blur_bg_layer = blur_bg_layer.filter(ImageFilter.GaussianBlur(radius=8)) # Độ mờ (điều chỉnh)
-    img.paste(blur_bg_layer, (0, 0), blur_bg_layer)
-
-    # --- 2. VẼ HIỆU ỨNG GLOW CHO STROKE (CHỈ PHÁT RA NGOÀI) ---
-    glow_radius_inner_limit = (actual_stroke_outer_diameter // 2) - stroke_width # Bán kính bên trong của glow
-    glow_radius_outer_limit = (actual_stroke_outer_diameter // 2) + 20 # Bán kính bên ngoài của glow
+    # Lớp này nằm ngay dưới avatar, kích thước lớn hơn avatar một chút để tạo vùng mờ rõ hơn
+    # Sử dụng kỹ thuật antialiasing cho hình tròn bằng cách vẽ lớn rồi thu nhỏ lại
+    blur_bg_size_large = avatar_size + 10 + 20 # Kích thước lớn hơn để tạo mượt
+    blur_bg_layer_raw = Image.new('L', (blur_bg_size_large, blur_bg_size_large), 0)
+    draw_blur_bg_raw = ImageDraw.Draw(blur_bg_layer_raw)
+    draw_blur_bg_raw.ellipse((0, 0, blur_bg_size_large, blur_bg_size_large), fill=255)
     
-    glow_layer_size = actual_stroke_outer_diameter + 40 # Kích thước tạm thời lớn hơn để tạo glow rộng
-    glow_layer_x = stroke_bbox_x - (glow_layer_size - actual_stroke_outer_diameter) // 2
-    glow_layer_y = stroke_bbox_y - (glow_layer_size - actual_stroke_outer_diameter) // 2
-
-    glow_layer = Image.new('RGBA', (glow_layer_size, glow_layer_size), (0, 0, 0, 0))
-    draw_glow = ImageDraw.Draw(glow_layer)
-
-    # Vẽ vòng tròn glow
-    _, _, stroke_l = rgb_to_hsl(*stroke_color_rgb)
-    calculated_alpha = int(max(50, min(200, 255 - (stroke_l * 150))))
-    glow_color_with_alpha = (*stroke_color_rgb, calculated_alpha)
+    blur_bg_layer_alpha = blur_bg_layer_raw.resize((avatar_size + 10, avatar_size + 10), Image.LANCZOS)
     
-    draw_glow.ellipse((0, 0, glow_layer_size, glow_layer_size), fill=glow_color_with_alpha)
-    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=10))
-
-    # Đục lỗ để glow chỉ ra ngoài
-    mask_for_glow_inner = Image.new('L', (glow_layer_size, glow_layer_size), 0)
-    draw_mask_for_glow_inner = ImageDraw.Draw(mask_for_glow_inner)
+    blur_bg_layer_color = Image.new('RGBA', (avatar_size + 10, avatar_size + 10), (0, 0, 0, 80)) # Màu đen với độ trong suốt 80
+    blur_bg_layer_color.putalpha(blur_bg_layer_alpha) # Áp dụng alpha mask
     
-    # Kích thước của lỗ bằng kích thước bên trong của stroke
-    inner_glow_hole_diameter = actual_stroke_outer_diameter - (stroke_width * 2)
-    inner_glow_hole_x = (glow_layer_size - inner_glow_hole_diameter) // 2
-    inner_glow_hole_y = (glow_layer_size - inner_glow_hole_diameter) // 2
-
-    draw_mask_for_glow_inner.ellipse((inner_glow_hole_x, inner_glow_hole_y, 
-                                      inner_glow_hole_x + inner_glow_hole_diameter, 
-                                      inner_glow_hole_y + inner_glow_hole_diameter), fill=255)
+    blur_bg_final = blur_bg_layer_color.filter(ImageFilter.GaussianBlur(radius=8)) # Độ mờ (điều chỉnh)
     
-    # Áp dụng mask để loại bỏ phần glow bên trong
-    glow_layer = Image.composite(glow_layer, Image.new('RGBA', glow_layer.size, (0,0,0,0)), mask_for_glow_inner.point(lambda p: 255 - p))
+    # Vị trí để dán lớp mờ
+    blur_bg_x = avatar_x - ((avatar_size + 10) - avatar_size) // 2
+    blur_bg_y = avatar_y - ((avatar_size + 10) - avatar_size) // 2
     
-    img.paste(glow_layer, (glow_layer_x, glow_layer_y), glow_layer)
+    img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
 
-    # --- 3. VẼ VIỀN STROKE (VIỀN MÀU) ---
-    stroke_layer = Image.new('RGBA', (actual_stroke_outer_diameter, actual_stroke_outer_diameter), (0, 0, 0, 0))
-    draw_stroke = ImageDraw.Draw(stroke_layer)
-    draw_stroke.ellipse((0, 0, actual_stroke_outer_diameter, actual_stroke_outer_diameter), fill=stroke_color)
 
-    # Đục lỗ bên trong để tạo thành viền (lỗ này bao gồm avatar và khoảng trống)
-    inner_hole_diameter = avatar_size + (padding_between_avatar_and_stroke * 2)
-    inner_hole_x = (actual_stroke_outer_diameter - inner_hole_diameter) // 2
-    inner_hole_y = (actual_stroke_outer_diameter - inner_hole_diameter) // 2
-    draw_stroke.ellipse((inner_hole_x, inner_hole_y, inner_hole_x + inner_hole_diameter, inner_hole_y + inner_hole_diameter), fill=(0, 0, 0, 0))
-    img.paste(stroke_layer, (stroke_bbox_x, stroke_bbox_y), stroke_layer)
+    # --- 2. VẼ VIỀN STROKE (VIỀN MÀU) ---
+    # Tạo một layer lớn hơn để vẽ hình tròn mượt mà (antialiasing)
+    stroke_layer_smooth_size = actual_stroke_outer_diameter + 20
+    stroke_layer_raw = Image.new('L', (stroke_layer_smooth_size, stroke_layer_smooth_size), 0)
+    draw_stroke_raw = ImageDraw.Draw(stroke_layer_raw)
+    draw_stroke_raw.ellipse((0, 0, stroke_layer_smooth_size, stroke_layer_smooth_size), fill=255)
 
-    # --- 4. DÁN AVATAR CHÍNH ---
-    avatar_circular_mask = Image.new('L', (avatar_size, avatar_size), 0)
-    draw_avatar_circular_mask = ImageDraw.Draw(avatar_circular_mask)
-    draw_avatar_circular_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+    # Đục lỗ cho phần bên trong của stroke (bao gồm avatar và khoảng trống)
+    inner_hole_diameter_for_stroke_raw = avatar_size + (padding_between_avatar_and_stroke * 2) + 20 # Kích thước lớn hơn để đục lỗ mượt
+    inner_hole_x_raw = (stroke_layer_smooth_size - inner_hole_diameter_for_stroke_raw) // 2
+    inner_hole_y_raw = (stroke_layer_smooth_size - inner_hole_diameter_for_stroke_raw) // 2
+    draw_stroke_raw.ellipse((inner_hole_x_raw, inner_hole_y_raw,
+                             inner_hole_x_raw + inner_hole_diameter_for_stroke_raw,
+                             inner_hole_y_raw + inner_hole_diameter_for_stroke_raw), fill=0)
+    
+    # Thu nhỏ layer đã vẽ để áp dụng antialiasing
+    stroke_alpha_mask = stroke_layer_raw.resize((actual_stroke_outer_diameter, actual_stroke_outer_diameter), Image.LANCZOS)
+    
+    # Tạo layer màu cho stroke và áp dụng mask
+    stroke_colored_layer = Image.new('RGBA', (actual_stroke_outer_diameter, actual_stroke_outer_diameter), stroke_color)
+    stroke_colored_layer.putalpha(stroke_alpha_mask)
+
+    img.paste(stroke_colored_layer, (stroke_bbox_x, stroke_bbox_y), stroke_colored_layer)
+
+    # --- 3. DÁN AVATAR CHÍNH ---
+    # Tương tự, tạo mask lớn hơn để làm mượt avatar
+    avatar_mask_smooth_size = avatar_size + 20
+    avatar_circular_mask_raw = Image.new('L', (avatar_mask_smooth_size, avatar_mask_smooth_size), 0)
+    draw_avatar_circular_mask_raw = ImageDraw.Draw(avatar_circular_mask_raw)
+    draw_avatar_circular_mask_raw.ellipse((0, 0, avatar_mask_smooth_size, avatar_mask_smooth_size), fill=255)
+    
+    avatar_circular_mask_smoothed = avatar_circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
 
     try:
         original_alpha = avatar_img.split()[3]
     except ValueError:
         original_alpha = Image.new('L', avatar_img.size, 255)
 
-    combined_alpha_mask = Image.composite(avatar_circular_mask, Image.new('L', avatar_circular_mask.size, 0), original_alpha)
+    # Kết hợp mask hình tròn mượt mà với kênh alpha gốc của avatar
+    combined_alpha_mask = Image.composite(avatar_circular_mask_smoothed, Image.new('L', avatar_circular_mask_smoothed.size, 0), original_alpha)
     img.paste(avatar_img, (avatar_x, avatar_y), combined_alpha_mask)
 
     # --- VẼ CHỮ VÀ ĐƯỜNG KẺ (Không thay đổi) ---
@@ -283,20 +272,16 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- Các sự kiện của bot ---
+# --- Các sự kiện của bot (Đã loại bỏ các print debug) ---
 @bot.event
 async def on_ready():
-    # print(f'{bot.user} đã sẵn sàng!')
-    # print('Bot đã online và có thể hoạt động.')
     if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
         try:
-            synced = await bot.tree.sync()
-            # print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
-            # print("LƯU Ý: Hãy nhớ xóa biến môi trường SYNC_SLASH_COMMANDS trên Render HOẶC đặt lại thành 'False' sau khi các lệnh đã được đồng bộ để tránh bị rate limit.")
+            await bot.tree.sync()
         except Exception:
-            pass # print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}.")
+            pass
     else:
-        pass # print("Bỏ qua việc đồng bộ slash commands.")
+        pass
 
 @bot.event
 async def on_member_join(member):
