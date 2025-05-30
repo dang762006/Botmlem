@@ -157,7 +157,7 @@ async def create_welcome_image(member):
     stroke_bbox_x = avatar_x - padding_between_avatar_and_stroke - stroke_width
     stroke_bbox_y = avatar_y - padding_between_avatar_and_stroke - stroke_width
     
-    # --- 1. LOẠI BỎ HOÀN TOÀN LỚP NỀN MỜ DƯỚI AVATAR ---
+    # --- 1. LOẠI BỎ HOÀN TOÀN LỚP NỀN MỜ DƯỚI AVATAR (Như bạn yêu cầu) ---
     # Phần này đã được bỏ qua. Avatar sẽ được dán trực tiếp sau stroke.
 
 
@@ -190,15 +190,16 @@ async def create_welcome_image(member):
 
 
     # --- 3. DÁN AVATAR CHÍNH ---
-    # Tăng kích thước mask thô của avatar để chống cắt lẹm hiệu quả hơn
-    avatar_mask_buffer = 10 # Buffer thêm để mask rộng hơn avatar gốc
+    # Tăng kích thước mask thô của avatar để chống cắt lẹm hiệu quả hơn và giúp tròn hơn
+    avatar_mask_buffer = 20 # Buffer thêm để mask rộng hơn avatar gốc nhiều hơn
     avatar_mask_smooth_size = avatar_size + avatar_mask_buffer * 2 # Kích thước lớn hơn cho mask thô
     
     avatar_circular_mask_raw = Image.new('L', (avatar_mask_smooth_size, avatar_mask_smooth_size), 0)
     draw_avatar_circular_mask_raw = ImageDraw.Draw(avatar_circular_mask_raw)
     
-    # Vẽ hình elip trên mask thô
-    draw_avatar_circular_mask_raw.ellipse((0, 0, avatar_mask_smooth_size, avatar_mask_smooth_size), fill=255)
+    # Vẽ hình elip trên mask thô (vị trí (buffer, buffer) là để hình tròn nằm giữa)
+    draw_avatar_circular_mask_raw.ellipse((avatar_mask_buffer, avatar_mask_buffer, 
+                                           avatar_size + avatar_mask_buffer, avatar_size + avatar_mask_buffer), fill=255)
     
     # Thu nhỏ mask thô về kích thước avatar thật sự
     avatar_circular_mask_smoothed = avatar_circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
@@ -212,7 +213,7 @@ async def create_welcome_image(member):
     combined_alpha_mask = Image.composite(avatar_circular_mask_smoothed, Image.new('L', avatar_circular_mask_smoothed.size, 0), original_alpha)
     img.paste(avatar_img, (avatar_x, avatar_y), combined_alpha_mask)
 
-    # --- VẼ CHỮ VÀ ĐƯỜNG KẺ (Không thay đổi) ---
+    # --- VẼ CHỮ VÀ ĐƯỜNG KẺ ---
     y_offset_from_avatar = 20
     welcome_text_y_pos = avatar_y + avatar_size + y_offset_from_avatar
 
@@ -305,7 +306,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         image_bytes = await create_welcome_image(member_to_test)
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
     except Exception as e:
-        print(f"Lỗi khi test: {e}")
+        print(f"Lỗi khi tạo hoặc gửi ảnh test: {e}")
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test. Vui lòng kiểm tra log bot.")
 
 from flask import Flask
@@ -326,35 +327,3 @@ def keep_alive():
 
 keep_alive()
 bot.run(TOKEN)
-```
-
-**Những thay đổi quan trọng trong đoạn code này:**
-
-1.  **Loại bỏ lớp nền mờ (`blur_bg_layer_color`) hoàn toàn:**
-    * Toàn bộ phần code liên quan đến "1. VẼ LỚP NỀN MỜ DƯỚI AVATAR" đã bị xóa bỏ. Điều này đảm bảo không còn hiệu ứng "glow" hay khung vuông nào xuất hiện sau avatar.
-2.  **Cải thiện mask cho avatar:**
-    * `avatar_mask_buffer = 10`: Tôi đã thêm một biến `avatar_mask_buffer` để tăng kích thước của `avatar_circular_mask_raw` thêm một khoảng đệm. Điều này giúp mask thô lớn hơn avatar một chút, cung cấp nhiều pixel hơn để thuật toán anti-aliasing (resize với `Image.LANCZOS`) hoạt động hiệu quả, giảm thiểu hiện tượng răng cưa và cắt lẹm.
-    * `avatar_mask_smooth_size = avatar_size + avatar_mask_buffer * 2`: Kích thước mask thô giờ đây lớn hơn avatar.
-    * Sau khi thu nhỏ mask này về `avatar_size`, avatar sẽ được dán với mask đã làm mượt tốt hơn.
-
-**Các bước bạn cần làm:**
-
-1.  **Đảm bảo `SYNC_SLASH_COMMANDS` được đặt là `False` trên Render:**
-    * Vào bảng điều khiển Render của bạn.
-    * Chọn dịch vụ BotMlem.
-    * Vào tab "Environment".
-    * Tìm `SYNC_SLASH_COMMANDS` và xác nhận giá trị của nó là `False`.
-    * Nếu chưa, hãy thay đổi thành `False` và lưu lại để kích hoạt một lần triển khai lại bot.
-2.  **Sao chép toàn bộ đoạn code mới này.**
-3.  **Thay thế toàn bộ nội dung trong file `main.py` của bạn** bằng đoạn code vừa rồi.
-4.  **Lưu lại file `main.py`.**
-5.  **Đẩy code lên GitHub.**
-    ```bash
-    git add .
-    git commit -m "Fix: Removed blur background, improved avatar mask for perfect circle"
-    git push origin main
-    ```
-6.  **Chờ đợi Render triển khai lại bot.**
-7.  **Sau khi bot đã online trở lại**, hãy dùng lệnh `/testwelcome` trên Discord để kiểm tra kết quả cuối cùng.
-
-Tôi thực sự hy vọng rằng với những thay đổi này, avatar và stroke sẽ hiển thị hoàn hảo như bạn mong muốn, không còn bất kỳ vấn đề cắt lẹm hay hiệu ứng không mong muốn nào nữa. Cảm ơn sự kiên nhẫn của bạn!
