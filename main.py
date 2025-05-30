@@ -190,7 +190,9 @@ async def create_welcome_image(member):
 
     # --- VẼ STROKE (VIỀN) CÓ KHOẢNG TRỐNG TRONG SUỐT VỚI AVATAR ---
     stroke_thickness = 6 # Độ dày của viền stroke
-    gap_size = 10        # Khoảng trống trong suốt giữa stroke và avatar
+    
+    # Giảm gap_size để stroke "dời vào trong một xíu"
+    gap_size = 5        # Khoảng trống trong suốt giữa stroke và avatar (giảm từ 10 xuống 5)
 
     # Kích thước của vòng tròn ngoài cùng của stroke
     outer_stroke_diameter = avatar_size + (gap_size * 2) + (stroke_thickness * 2) 
@@ -214,7 +216,6 @@ async def create_welcome_image(member):
     )
 
     # Vẽ vòng tròn bên trong (trong suốt) để tạo ra khoảng trống
-    # Tính toán vị trí offset cho vòng tròn bên trong
     inner_offset_x = (outer_stroke_diameter * supersample_factor - inner_stroke_diameter * supersample_factor) // 2
     inner_offset_y = (outer_stroke_diameter * supersample_factor - inner_stroke_diameter * supersample_factor) // 2
 
@@ -230,6 +231,7 @@ async def create_welcome_image(member):
     )
 
     # Tính toán vị trí dán stroke lên ảnh chính
+    # Vị trí này cũng sẽ thay đổi do gap_size thay đổi
     stroke_paste_x = avatar_x - gap_size - stroke_thickness
     stroke_paste_y = avatar_y - gap_size - stroke_thickness
 
