@@ -118,7 +118,7 @@ async def create_welcome_image(member):
 
     background_image_path = "welcome.png"
     try:
-        img = Image.open(background_image_path).convert("RGBA") # Đảm bảo ảnh nền cũng là RGBA
+        img = Image.open(background_image_path).convert("RGBA")
         img_width, img_height = img.size
         print(f"DEBUG: Đã tải ảnh nền: {background_image_path} với kích thước {img_width}x{img_height}")
     except FileNotFoundError:
@@ -132,7 +132,7 @@ async def create_welcome_image(member):
 
     draw = ImageDraw.Draw(img)
 
-    # --- Xử lý Avatar người dùng và viền stroke ---
+    # --- Xử lý Avatar người dùng ---
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     print(f"DEBUG: Đang tải avatar từ URL: {avatar_url}")
     avatar_bytes = None 
@@ -170,24 +170,33 @@ async def create_welcome_image(member):
 
     stroke_color = (*stroke_color_rgb, 255) 
 
-    # --- TẠO LỚP NỀN MỜ PHÍA SAU AVATAR ---
+    # --- TẠO LỚP NỀN MỜ HÌNH TRÒN PHÍA SAU AVATAR ---
     blur_bg_size = avatar_size 
     blur_bg_x = avatar_x
     blur_bg_y = avatar_y
 
-    blur_color_with_alpha = (*stroke_color_rgb, 128) 
-    blur_bg_layer = Image.new('RGBA', (blur_bg_size, blur_bg_size), blur_color_with_alpha)
+    blur_color_with_alpha = (*stroke_color_rgb, 128) # 128 là 50% của 255
+
+    # Tạo một hình tròn màu cho nền mờ
+    blur_bg_layer_raw = Image.new('RGBA', (blur_bg_size, blur_bg_size), (0, 0, 0, 0))
+    draw_blur_bg = ImageDraw.Draw(blur_bg_layer_raw)
+    draw_blur_bg.ellipse((0, 0, blur_bg_size, blur_bg_size), fill=blur_color_with_alpha)
     
-    blur_bg_final = blur_bg_layer.filter(ImageFilter.GaussianBlur(radius=15)) 
+    # Áp dụng hiệu ứng làm mờ
+    blur_bg_final = blur_bg_layer_raw.filter(ImageFilter.GaussianBlur(radius=15)) 
     
     img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
 
 
-    # --- VẼ VIỀN STROKE CHO AVATAR (KHÔNG CÓ GLOW) ---
+    # --- VẼ VIỀN STROKE CHO AVATAR (CÓ KHOẢNG TRỐNG VÀ KHÔNG CÓ GLOW) ---
     stroke_width = 6
+    # Khoảng cách giữa stroke và avatar
+    gap_between_stroke_and_avatar = 10 # Điều chỉnh giá trị này để thay đổi khoảng trống
 
-    # Kích thước ngoài của stroke (bao gồm avatar và viền)
-    outer_dim_stroke = avatar_size + (stroke_width * 2) 
+    # Kích thước ngoài của stroke
+    # Stroke sẽ lớn hơn avatar một khoảng (gap + stroke_width) mỗi bên
+    outer_dim_stroke = avatar_size + (stroke_width * 2) + (gap_between_stroke_and_avatar * 2) 
+    
     supersample_factor = 4 
     supersample_outer_dim_stroke = outer_dim_stroke * supersample_factor
 
@@ -201,8 +210,8 @@ async def create_welcome_image(member):
     )
 
     # Tạo mask cho phần bên trong để stroke chỉ là viền
-    # Kích thước vòng tròn bên trong là kích thước avatar (để avatar vừa khít bên trong)
-    inner_circle_size_px_stroke = avatar_size * supersample_factor
+    # Kích thước vòng tròn bên trong phải tương ứng với vị trí avatar + khoảng cách
+    inner_circle_size_px_stroke = (avatar_size + (gap_between_stroke_and_avatar * 2)) * supersample_factor
     inner_circle_offset_x_stroke = (supersample_outer_dim_stroke - inner_circle_size_px_stroke) // 2
     inner_circle_offset_y_stroke = (supersample_outer_dim_stroke - inner_circle_size_px_stroke) // 2
 
@@ -212,12 +221,11 @@ async def create_welcome_image(member):
         fill=(0,0,0,0) 
     )
 
-    # Resize xuống kích thước thực tế để có hiệu ứng anti-aliasing mượt mà
     stroke_img_final = temp_stroke_img.resize((outer_dim_stroke, outer_dim_stroke), Image.LANCZOS)
 
-    # Tính toán vị trí dán cho viền 
-    paste_x_stroke = avatar_x - stroke_width
-    paste_y_stroke = avatar_y - stroke_width
+    # Tính toán vị trí dán cho viền để nó căn giữa avatar
+    paste_x_stroke = avatar_x - (stroke_width + gap_between_stroke_and_avatar)
+    paste_y_stroke = avatar_y - (stroke_width + gap_between_stroke_and_avatar)
 
     img.paste(stroke_img_final, (paste_x_stroke, paste_y_stroke), stroke_img_final)
 
@@ -225,32 +233,24 @@ async def create_welcome_image(member):
     # --- DÁN AVATAR CHÍNH VÀ ĐẢM BẢO NÓ TRÒN ĐÚNG KÍCH THƯỚC (210x210) ---
     # Tạo một layer tạm thời để vẽ avatar lên đó và áp dụng mask
     avatar_layer = Image.new('RGBA', (avatar_size, avatar_size), (0, 0, 0, 0))
-    # Dán avatar lên layer tạm thời (để có thể dùng mask sau)
     avatar_layer.paste(avatar_img, (0, 0)) 
 
     # Tạo mask hình tròn cho avatar với kích thước chính xác 210x210
-    # Sử dụng supersampling cho mask để bo tròn mượt hơn
     mask_supersample_factor = 4
     mask_raw_size = avatar_size * mask_supersample_factor
     circular_mask_raw = Image.new('L', (mask_raw_size, mask_raw_size), 0)
     draw_circular_mask_raw = ImageDraw.Draw(circular_mask_raw)
     draw_circular_mask_raw.ellipse((0, 0, mask_raw_size, mask_raw_size), fill=255)
     
-    # Thu nhỏ mask thô về kích thước avatar thật sự (avatar_size)
     circular_mask_smoothed = circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
 
-    # Áp dụng mask hình tròn lên avatar_layer
-    # Lấy kênh alpha của avatar gốc (nếu có)
     try:
         original_alpha = avatar_layer.split()[3]
-    except ValueError: # Nếu avatar không có kênh alpha (ví dụ: JPG), tạo kênh alpha hoàn toàn đục
+    except ValueError: 
         original_alpha = Image.new('L', avatar_layer.size, 255)
 
-    # Kết hợp mask hình tròn mượt mà với kênh alpha gốc của avatar
-    # Điều này đảm bảo nếu avatar gốc có phần trong suốt, phần trong suốt đó vẫn được giữ
     final_alpha_mask = Image.composite(circular_mask_smoothed, Image.new('L', circular_mask_smoothed.size, 0), original_alpha)
 
-    # Dán avatar đã được cắt tròn lên ảnh chính, sử dụng mask
     img.paste(avatar_layer, (avatar_x, avatar_y), final_alpha_mask)
 
 
@@ -310,14 +310,15 @@ async def create_welcome_image(member):
 async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
-    if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
-        try:
-            await bot.tree.sync()  
-            print(f"Đã đồng bộ {len(bot.tree.get_commands())} lệnh slash commands toàn cầu.")
-        except Exception as e:
-            print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
-    else:
-        print("Bỏ qua đồng bộ lệnh slash. Đặt SYNC_SLASH_COMMANDS = True trên Render để đồng bộ nếu cần.")
+    try:
+        # Sử dụng os.getenv để kiểm soát việc sync lệnh slash
+        if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
+            synced = await bot.tree.sync()  
+            print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
+        else:
+            print("Bỏ qua đồng bộ lệnh slash. Đặt SYNC_SLASH_COMMANDS = True trên Render để đồng bộ nếu cần.")
+    except Exception as e:
+        print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
 
 
 @bot.event
@@ -338,9 +339,9 @@ async def on_member_join(member):
         image_bytes = await create_welcome_image(member)
         await channel.send(f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
                            file=discord.File(fp=image_bytes, filename='welcome.png'))
-        print(f"Đã gửi ảnh chào mừng thành công cho {member.display_name}!")
+        print("Đã gửi ảnh chào mừng thành công!")
     except Exception as e:
-        print(f"LỖỖI CHÀO MỪNG: Lỗi khi tạo hoặc gửi ảnh chào mừng cho {member.display_name}: {e}")
+        print(f"LỖỖI CHÀO MỪNG: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
         await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
 # --- Slash Command để TEST tạo ảnh welcome ---
@@ -357,7 +358,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
         print("DEBUG: Đã gửi ảnh test chào mừng thành công!")
     except Exception as e:
-        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test. Vui lòng kiểm tra log bot.")
+        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
 # --- Để bot luôn online trên Render (thay thế Replit) ---
