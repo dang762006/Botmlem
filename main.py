@@ -175,24 +175,25 @@ async def create_welcome_image(member):
     blur_bg_x = avatar_x
     blur_bg_y = avatar_y
 
-    blur_color_with_alpha = (*stroke_color_rgb, 128) # 128 là 50% của 255
+    # Màu nền mờ với alpha 50% (128/255)
+    blur_color_with_alpha = (*stroke_color_rgb, 128) 
 
-    # Tạo một hình tròn màu cho nền mờ
-    blur_bg_layer_raw = Image.new('RGBA', (blur_bg_size, blur_bg_size), (0, 0, 0, 0))
-    draw_blur_bg = ImageDraw.Draw(blur_bg_layer_raw)
-    draw_blur_bg.ellipse((0, 0, blur_bg_size, blur_bg_size), fill=blur_color_with_alpha)
+    # Tạo một layer tạm thời chỉ chứa hình tròn màu với độ trong suốt
+    blur_bg_raw_circle = Image.new('RGBA', (blur_bg_size, blur_bg_size), (0, 0, 0, 0))
+    draw_blur_bg_raw = ImageDraw.Draw(blur_bg_raw_circle)
+    draw_blur_bg_raw.ellipse((0, 0, blur_bg_size, blur_bg_size), fill=blur_color_with_alpha)
     
-    # Áp dụng hiệu ứng làm mờ
-    blur_bg_final = blur_bg_layer_raw.filter(ImageFilter.GaussianBlur(radius=15)) 
+    # Áp dụng hiệu ứng làm mờ (Gaussian Blur) trực tiếp lên hình tròn đó
+    # Tăng radius để mờ hơn nếu cần
+    blur_bg_final = blur_bg_raw_circle.filter(ImageFilter.GaussianBlur(radius=30)) # Tăng radius để mờ hơn
     
+    # Dán lớp nền mờ này vào ảnh chính
     img.paste(blur_bg_final, (blur_bg_x, blur_bg_y), blur_bg_final)
 
 
     # --- VẼ STROKE (VIỀN) CÓ KHOẢNG TRỐNG TRONG SUỐT VỚI AVATAR ---
     stroke_thickness = 6 # Độ dày của viền stroke
-    
-    # Giảm gap_size để stroke "dời vào trong một xíu"
-    gap_size = 5        # Khoảng trống trong suốt giữa stroke và avatar (giảm từ 10 xuống 5)
+    gap_size = 5         # Khoảng trống trong suốt giữa stroke và avatar (giá trị đã điều chỉnh)
 
     # Kích thước của vòng tròn ngoài cùng của stroke
     outer_stroke_diameter = avatar_size + (gap_size * 2) + (stroke_thickness * 2) 
@@ -231,7 +232,6 @@ async def create_welcome_image(member):
     )
 
     # Tính toán vị trí dán stroke lên ảnh chính
-    # Vị trí này cũng sẽ thay đổi do gap_size thay đổi
     stroke_paste_x = avatar_x - gap_size - stroke_thickness
     stroke_paste_y = avatar_y - gap_size - stroke_thickness
 
@@ -319,7 +319,9 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
     try:
-        if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
+        # Giữ nguyên phần kiểm tra biến môi trường SYNC_SLASH_COMMANDS
+        # để bạn có thể bật/tắt đồng bộ lệnh slash khi cần trên Render.
+        if os.getenv('SYNC_SLASH_COMMANDS') == 'True': 
             synced = await bot.tree.sync()  
             print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
         else:
