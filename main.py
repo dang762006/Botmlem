@@ -183,7 +183,22 @@ async def create_welcome_image(member):
 
     stroke_color = (*stroke_color_rgb, 255) 
 
-    # --- VẼ VIỀN STROKE CHO AVATAR ---
+    # --- 1. TẠO LỚP NỀN TRÒN CÙNG KÍCH THƯỚC AVATAR, GIẢM ĐỘ TRONG SUỐT ---
+    # Kích thước lớp nền bằng kích thước avatar
+    background_circle_size = avatar_size 
+    
+    # Tạo hình tròn màu sắc giống stroke với độ trong suốt
+    # Độ trong suốt 100 (từ 0-255). Có thể điều chỉnh giá trị này.
+    background_circle_color = (*stroke_color_rgb, 100) 
+    background_circle_layer = Image.new('RGBA', (background_circle_size, background_circle_size), (0, 0, 0, 0))
+    draw_background_circle = ImageDraw.Draw(background_circle_layer)
+    draw_background_circle.ellipse((0, 0, background_circle_size, background_circle_size), fill=background_circle_color)
+    
+    # Vị trí lớp nền: trùng với vị trí của avatar
+    img.paste(background_circle_layer, (avatar_x, avatar_y), background_circle_layer)
+
+
+    # --- 2. VẼ VIỀN STROKE CHO AVATAR (Không thay đổi từ bản trước đó vì nó đã mượt) ---
     stroke_width = 6
     glow_radius = 5 
 
@@ -229,33 +244,27 @@ async def create_welcome_image(member):
     img.paste(glow_img, (paste_x, paste_y), glow_img)
     img.paste(stroke_img_final, (paste_x, paste_y), stroke_img_final)
 
-    # --- DÁN AVATAR CHÍNH (Đảm bảo đúng kích thước và tròn hoàn hảo) ---
-    # Tạo mask hình tròn cho avatar
-    # Kích thước mask thô lớn hơn để làm mượt khi resize
-    avatar_mask_buffer = 40 
-    avatar_mask_raw_size = avatar_size + avatar_mask_buffer * 2 
-    
-    avatar_circular_mask_raw = Image.new('L', (avatar_mask_raw_size, avatar_mask_raw_size), 0)
-    draw_avatar_circular_mask_raw = ImageDraw.Draw(avatar_circular_mask_raw)
-    
-    # Vẽ hình elip trên mask thô (có tính đến buffer để hình tròn nằm giữa)
-    draw_avatar_circular_mask_raw.ellipse((avatar_mask_buffer, avatar_mask_buffer, 
-                                           avatar_size + avatar_mask_buffer, avatar_size + avatar_mask_buffer), fill=255)
-    
-    # Thu nhỏ mask thô về kích thước avatar thật sự (avatar_size)
-    avatar_circular_mask_smoothed = avatar_circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
+    # --- 3. DÁN AVATAR CHÍNH (Đảm bảo đúng kích thước và cắt tròn đơn giản) ---
+    # Tạo một mask hình tròn đơn giản, không cần supersampling quá phức tạp
+    # vì yêu cầu là "không cần mask cho hình tròn mượt nữa" (ngụ ý cắt thẳng)
+    avatar_mask = Image.new('L', (avatar_size, avatar_size), 0)
+    draw_mask = ImageDraw.Draw(avatar_mask)
+    draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255) # Vẽ hình tròn trực tiếp
 
+    # Áp dụng mask cho avatar
     # Lấy kênh alpha của avatar gốc (nếu có)
     try:
         original_alpha = avatar_img.split()[3]
     except ValueError: # Nếu avatar không có kênh alpha (ví dụ: JPG), tạo kênh alpha hoàn toàn đục
         original_alpha = Image.new('L', avatar_img.size, 255)
 
-    # Kết hợp mask hình tròn mượt mà với kênh alpha gốc của avatar
-    combined_alpha_mask = Image.composite(avatar_circular_mask_smoothed, Image.new('L', avatar_circular_mask_smoothed.size, 0), original_alpha)
+    # Kết hợp mask hình tròn với kênh alpha gốc của avatar
+    # Sử dụng Image.composite để đảm bảo độ trong suốt ban đầu của avatar (nếu có)
+    combined_alpha_mask = Image.composite(avatar_mask, Image.new('L', avatar_mask.size, 0), original_alpha)
 
     # Dán avatar lên trên ảnh chính, sử dụng mask kết hợp để giữ hình tròn và độ trong suốt gốc
     img.paste(avatar_img, (avatar_x, avatar_y), combined_alpha_mask)
+
 
     y_offset_from_avatar = 20 
     welcome_text_y_pos = avatar_y + avatar_size + y_offset_from_avatar
