@@ -308,20 +308,19 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
     # --- START CÓ THAY ĐỔI Ở ĐÂY ---
-    # Chỉ đồng bộ slash commands nếu biến môi trường SYNC_SLASH_COMMANDS được đặt là "True"
+    # CHỈ ĐỒNG BỘ SLASH COMMANDS NẾU BIẾN MÔI TRƯỜNG 'SYNC_SLASH_COMMANDS' ĐƯỢC ĐẶT LÀ 'True'
     # Bạn sẽ cần đặt biến môi trường này trên Render (ví dụ: SYNC_SLASH_COMMANDS = True)
-    # Sau khi đồng bộ thành công lần đầu, bạn có thể xóa biến này hoặc đặt nó thành False
-    # và deploy lại để tránh đồng bộ không cần thiết.
+    # SAU KHI ĐỒNG BỘ THÀNH CÔNG LẦN ĐẦU, BẠN NÊN XÓA BIẾN NÀY HOẶC ĐẶT NÓ THÀNH 'False'
+    # VÀ DEPLOY LẠI ĐỂ TRÁNH ĐỒNG BỘ KHÔNG CẦN THIẾT KHI BOT KHỞI ĐỘNG LẠI.
     if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
         try:
             synced = await bot.tree.sync()
             print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
-            # OPTIONAL: Nếu muốn tự động tắt biến môi trường sau khi sync (cần tùy chỉnh thêm)
-            # print("Hãy nhớ tắt biến môi trường SYNC_SLASH_COMMANDS trên Render để tránh đồng bộ lại không cần thiết.")
+            print("LƯU Ý: Hãy nhớ xóa biến môi trường SYNC_SLASH_COMMANDS trên Render HOẶC đặt lại thành 'False' sau khi các lệnh đã được đồng bộ để tránh bị rate limit.")
         except Exception as e:
             print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
     else:
-        print("Bỏ qua việc đồng bộ slash commands. Để đồng bộ, hãy đặt biến môi trường SYNC_SLASH_COMMANDS = 'True'.")
+        print("Bỏ qua việc đồng bộ slash commands. Để đồng bộ lại, hãy đặt biến môi trường SYNC_SLASH_COMMANDS = 'True' và khởi động lại bot.")
     # --- END CÓ THAY ĐỔI Ở ĐÂY ---
 
 @bot.event
