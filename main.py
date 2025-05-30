@@ -74,12 +74,9 @@ def adjust_color_brightness_saturation(rgb_color, brightness_factor=1.0, saturat
 async def get_dominant_color(image_bytes):
     try:
         f = io.BytesIO(image_bytes)
-        # Colorthief có thể gặp vấn đề với hình ảnh trong suốt,
-        # tạm thời chuyển đổi sang RGB để colorthief hoạt động,
-        # nhưng vẫn giữ bytes gốc để xử lý avatar sau này.
         img_temp = Image.open(f).convert("RGB")
         f_temp = io.BytesIO()
-        img_temp.save(f_temp, format='PNG') # Lưu lại dưới dạng PNG để colorthief đọc
+        img_temp.save(f_temp, format='PNG')
         f_temp.seek(0)
 
         color_thief = ColorThief(f_temp)
@@ -124,7 +121,7 @@ async def create_welcome_image(member):
 
     background_image_path = "welcome.png"
     try:
-        img = Image.open(background_image_path).convert("RGBA") # Đảm bảo ảnh nền cũng là RGBA
+        img = Image.open(background_image_path).convert("RGBA")
         img_width, img_height = img.size
         print(f"DEBUG: Đã tải ảnh nền: {background_image_path} với kích thước {img_width}x{img_height}")
     except FileNotFoundError:
@@ -147,12 +144,10 @@ async def create_welcome_image(member):
             if resp.status != 200:
                 print(f"LỖI AVATAR: Không thể tải avatar cho {member.name}. Trạng thái: {resp.status}. Sử dụng avatar màu xám mặc định.")
                 default_avatar_size = 210
-                # Tạo avatar mặc định với kênh alpha đầy đủ (màu xám và hoàn toàn đục)
                 avatar_img = Image.new('RGBA', (default_avatar_size, default_avatar_size), color=(100, 100, 100, 255))
             else:
                 avatar_bytes = await resp.read()
                 data = io.BytesIO(avatar_bytes)
-                # QUAN TRỌNG: Mở avatar ở chế độ "RGBA" để giữ kênh alpha
                 avatar_img = Image.open(data).convert("RGBA")
                 print(f"DEBUG: Đã tải avatar cho {member.name}.")
 
@@ -174,16 +169,14 @@ async def create_welcome_image(member):
     _, _, initial_l = rgb_to_hsl(*dominant_color_from_avatar)
 
     # Điều chỉnh màu gốc để làm màu stroke/tên: Tùy theo độ sáng của avatar
-    if initial_l < 0.35: # Nếu màu avatar gốc quá tối (ngưỡng này có thể điều chỉnh)
-        # Làm sáng nhiều và rực hơn để dễ đọc, đồng thời giới hạn độ sáng tối thiểu để đảm bảo nó luôn đủ sáng
+    if initial_l < 0.35:
         stroke_color_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.8, clamp_min_l=0.5)
-    else: # Nếu màu avatar gốc đã đủ sáng hoặc sáng
-        # Giữ tông màu gốc, chỉ làm rực và sáng hơn một chút để nổi bật
+    else:
         stroke_color_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=1.15, saturation_factor=1.3)
 
     stroke_color = (*stroke_color_rgb, 255)
 
-    # --- VẼ HIỆU ỨNG GLOW CHO AVATAR ---
+    # --- 1. VẼ HIỆU ỨNG GLOW CHO AVATAR (LỚP DƯỚI CÙNG) ---
     glow_outer_size = avatar_size + 40
     glow_x = avatar_x - (glow_outer_size - avatar_size) // 2
     glow_y = avatar_y - (glow_outer_size - avatar_size) // 2
@@ -199,38 +192,7 @@ async def create_welcome_image(member):
     glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=10))
     img.paste(glow_layer, (0, 0), glow_layer)
 
-    # --- VẼ VIỀN TRONG SUỐT NẰM GIỮA STROKE VÀ AVATAR ---
-    # Thay đổi cách vẽ viền trong suốt để đảm bảo nó hiển thị rõ
-    transparent_gap_width = 10 # Độ rộng của khoảng trong suốt
-    transparent_gap_outer_size = avatar_size + (transparent_gap_width * 2)
-    transparent_gap_x = avatar_x - transparent_gap_width
-    transparent_gap_y = avatar_y - transparent_gap_width
-
-    # Tạo một layer mới để vẽ viền trong suốt
-    transparent_gap_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
-    draw_transparent_gap = ImageDraw.Draw(transparent_gap_layer)
-
-    # Vẽ một hình tròn lớn (sẽ là phần "viền")
-    draw_transparent_gap.ellipse((transparent_gap_x, transparent_gap_y,
-                                  transparent_gap_x + transparent_gap_outer_size,
-                                  transparent_gap_y + transparent_gap_outer_size),
-                                 fill=(0, 0, 0, 120)) # Màu đen với độ trong suốt 120 (mờ)
-
-    # Vẽ một hình tròn nhỏ hơn ở giữa để tạo "lỗ" trong suốt (lớp này sẽ che đi phần màu bên dưới)
-    inner_hole_size = avatar_size
-    inner_hole_x = (transparent_gap_outer_size - inner_hole_size) // 2
-    inner_hole_y = (transparent_gap_outer_size - inner_hole_size) // 2
-    
-    draw_transparent_gap.ellipse((transparent_gap_x + inner_hole_x, transparent_gap_y + inner_hole_y,
-                                  transparent_gap_x + inner_hole_x + inner_hole_size,
-                                  transparent_gap_y + inner_hole_y + inner_hole_size),
-                                 fill=(0, 0, 0, 0)) # Hoàn toàn trong suốt
-
-    # Dán lớp viền trong suốt lên ảnh chính
-    img.paste(transparent_gap_layer, (0, 0), transparent_gap_layer)
-
-
-    # --- VẼ VIỀN STROKE CHO AVATAR (được vẽ sau viền trong suốt) ---
+    # --- 2. VẼ VIỀN STROKE CHO AVATAR (NẰM TRÊN GLOW) ---
     stroke_width = 6
     stroke_outer_size = avatar_size + (stroke_width * 2)
     stroke_x = avatar_x - stroke_width
@@ -240,6 +202,7 @@ async def create_welcome_image(member):
     draw_stroke_temp = ImageDraw.Draw(stroke_temp_img)
     draw_stroke_temp.ellipse((0, 0, stroke_outer_size, stroke_outer_size), fill=stroke_color)
 
+    # Vòng tròn trong suốt để tạo hiệu ứng viền
     inner_circle_size = avatar_size
     inner_circle_x = (stroke_outer_size - inner_circle_size) // 2
     inner_circle_y = (stroke_outer_size - inner_circle_size) // 2
@@ -251,7 +214,38 @@ async def create_welcome_image(member):
     )
     img.paste(stroke_temp_img, (stroke_x, stroke_y), stroke_temp_img)
 
-    # --- Xử lý độ trong suốt của avatar (phần này giữ nguyên) ---
+    # --- 3. VẼ VIỀN TRONG SUỐT (NẰM TRÊN STROKE, TRƯỚC AVATAR) ---
+    transparent_border_width = 3 # Độ dày của viền trong suốt
+    
+    # Kích thước của viền trong suốt, nằm ngay bên ngoài viền màu (stroke)
+    transparent_border_outer_size = avatar_size + (stroke_width * 2) + (transparent_border_width * 2)
+    
+    # Vị trí của viền trong suốt
+    transparent_border_x = avatar_x - stroke_width - transparent_border_width
+    transparent_border_y = avatar_y - stroke_width - transparent_border_width
+
+    transparent_border_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
+    draw_transparent_border = ImageDraw.Draw(transparent_border_layer)
+
+    # Vẽ vòng tròn bên ngoài của viền trong suốt (phần sẽ có màu và độ trong suốt)
+    draw_transparent_border.ellipse((transparent_border_x, transparent_border_y,
+                                      transparent_border_x + transparent_border_outer_size,
+                                      transparent_border_y + transparent_border_outer_size),
+                                     fill=(0, 0, 0, 80)) # Màu đen với độ trong suốt 80 (có thể điều chỉnh)
+
+    # Vẽ vòng tròn bên trong để "đục lỗ" tạo thành viền trong suốt
+    inner_hole_size_transparent = avatar_size + (stroke_width * 2) # Kích thước lỗ bằng kích thước avatar + 2 lần độ dày của stroke
+    inner_hole_x_transparent = (transparent_border_outer_size - inner_hole_size_transparent) // 2
+    inner_hole_y_transparent = (transparent_border_outer_size - inner_hole_size_transparent) // 2
+    
+    draw_transparent_border.ellipse((transparent_border_x + inner_hole_x_transparent, transparent_border_y + inner_hole_y_transparent,
+                                      transparent_border_x + inner_hole_x_transparent + inner_hole_size_transparent,
+                                      transparent_border_y + inner_hole_y_transparent + inner_hole_size_transparent),
+                                     fill=(0, 0, 0, 0)) # Hoàn toàn trong suốt
+
+    img.paste(transparent_border_layer, (0, 0), transparent_border_layer)
+
+    # --- 4. DÁN AVATAR CHÍNH (LỚP TRÊN CÙNG) ---
     avatar_circular_mask = Image.new('L', (avatar_size, avatar_size), 0)
     draw_avatar_circular_mask = ImageDraw.Draw(avatar_circular_mask)
     draw_avatar_circular_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
