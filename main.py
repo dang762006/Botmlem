@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks # THÊM tasks VÀO ĐÂY
 from discord import app_commands
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
@@ -252,7 +252,7 @@ async def create_welcome_image(member):
     try:
         original_alpha = avatar_layer.split()[3]
     except ValueError: 
-        original_alpha = Image.new('L', avatar_layer.size, 255)
+        original_alpha = Image.new('L', circular_mask_smoothed.size, 255) # Use circular_mask_smoothed.size here
 
     final_alpha_mask = Image.composite(circular_mask_smoothed, Image.new('L', circular_mask_smoothed.size, 0), original_alpha)
 
@@ -310,6 +310,32 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
+# --- CÁC PHẦN MỚI THÊM VÀO ĐÂY ---
+
+# ID kênh mới: 1379721599749591101
+CHANNEL_ID_TO_SEND = 1379721599749591101 
+
+@tasks.loop(seconds=15 * 60) # Lặp lại mỗi 15 phút (15 * 60 giây)
+async def send_periodic_message():
+    channel = bot.get_channel(CHANNEL_ID_TO_SEND)
+    if channel:
+        try:
+            # Mở file nuoc.gif và gửi
+            with open("nuoc.gif", "rb") as f:
+                picture = discord.File(f)
+                await channel.send("Uống nước đi ae", file=picture)
+            print(f"DEBUG: Đã gửi tin nhắn 'Uống nước đi ae' và ảnh nuoc.gif đến kênh {channel.name} (ID: {CHANNEL_ID_TO_SEND})")
+        except FileNotFoundError:
+            print(f"LỖI: Không tìm thấy file nuoc.gif trong cùng thư mục với main.py.")
+            await channel.send("Uống nước đi ae (Lỗi: Không tìm thấy ảnh nuoc.gif).") # Gửi tin nhắn không có ảnh
+        except discord.Forbidden:
+            print(f"LỖI: Bot không có quyền gửi tin nhắn hoặc đính kèm file vào kênh {channel.name} (ID: {CHANNEL_ID_TO_SEND}).")
+        except Exception as e:
+            print(f"LỖI khi gửi tin nhắn tự động: {e}")
+    else:
+        print(f"LỖI: Không tìm thấy kênh với ID {CHANNEL_ID_TO_SEND} để gửi tin nhắn tự động.")
+
+
 # --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
@@ -323,11 +349,14 @@ async def on_ready():
             print("Bỏ qua đồng bộ lệnh slash. Đặt SYNC_SLASH_COMMANDS = True trên Render để đồng bộ nếu cần.")
     except Exception as e:
         print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
+    
+    # BẮT ĐẦU TÁC VỤ GỬI TIN NHẮN TỰ ĐỘNG KHI BOT ĐÃ SẴN SÀNG
+    send_periodic_message.start()
 
 
 @bot.event
 async def on_member_join(member):
-    channel_id = 1322848542758277202  
+    channel_id = 1322848542758277202  # Kênh chào mừng bạn đã thiết lập trước đó
     channel = bot.get_channel(channel_id)
 
     if channel is None:
@@ -365,7 +394,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
-# --- Để bot luôn online trên Render (thay thế Replit) ---
+# --- Để bot luôn online trên Render ---
 from flask import Flask
 from threading import Thread
 
