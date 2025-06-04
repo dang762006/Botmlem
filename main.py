@@ -1,14 +1,14 @@
 import discord
-from discord.ext import commands, tasks # THÊM tasks VÀO ĐÂY
+from discord.ext import commands, tasks # Giữ lại tasks
 from discord import app_commands
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
 import io
 import aiohttp
-import asyncio      
-from colorthief import ColorThief 
+import asyncio
+from colorthief import ColorThief
 
-# --- Các hàm xử lý màu sắc ---
+# --- Các hàm xử lý màu sắc (giữ nguyên) ---
 def rgb_to_hsl(r, g, b):
     r /= 255.0
     g /= 255.0
@@ -61,8 +61,8 @@ def adjust_color_brightness_saturation(rgb_color, brightness_factor=1.0, saturat
 
     l = l * brightness_factor
 
-    if clamp_min_l != 0.0 or clamp_max_l != 1.0: 
-        l = min(clamp_max_l, max(clamp_min_l, l)) 
+    if clamp_min_l != 0.0 or clamp_max_l != 1.0:
+        l = min(clamp_max_l, max(clamp_min_l, l))
 
     s = min(1.0, max(0.0, s * saturation_factor))
 
@@ -78,7 +78,7 @@ async def get_dominant_color(image_bytes):
 
         color_thief = ColorThief(f_temp)
         dominant_color_rgb = color_thief.get_color(quality=1)
-        return dominant_color_rgb 
+        return dominant_color_rgb
     except Exception as e:
         print(f"LỖI COLORTHIEF: Không thể lấy màu chủ đạo từ avatar: {e}")
         return None
@@ -92,9 +92,9 @@ intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
 
-# --- Định nghĩa hàm tạo ảnh chào mừng ---
+# --- Định nghĩa hàm tạo ảnh chào mừng (giữ nguyên) ---
 async def create_welcome_image(member):
-    font_path_preferred = "1FTV-Designer.otf"  
+    font_path_preferred = "1FTV-Designer.otf"
 
     font_welcome = None
     font_name = None
@@ -106,15 +106,15 @@ async def create_welcome_image(member):
     except Exception as e:
         print(f"LỖI FONT: Không thể tải font '{font_path_preferred}'. Sử dụng font mặc định với kích thước cố định. Chi tiết: {e}")
         try:
-            font_welcome = ImageFont.truetype("arial.ttf", 60)  
+            font_welcome = ImageFont.truetype("arial.ttf", 60)
             font_name = ImageFont.truetype("arial.ttf", 34)
             print("DEBUG: Đã sử dụng font Arial.ttf (thay thế cho 1FTV-Designer.otf).")
         except Exception:
-            font_welcome = ImageFont.load_default().font_variant(size=60)  
+            font_welcome = ImageFont.load_default().font_variant(size=60)
             font_name = ImageFont.load_default().font_variant(size=34)
             print("DEBUG: Đã sử dụng font mặc định của Pillow và ép kích thước (thay thế cho 1FTV-Designer.otf).")
 
-    shadow_offset = 3 
+    shadow_offset = 3
 
     background_image_path = "welcome.png"
     try:
@@ -135,7 +135,7 @@ async def create_welcome_image(member):
     # --- Xử lý Avatar người dùng ---
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     print(f"DEBUG: Đang tải avatar từ URL: {avatar_url}")
-    avatar_bytes = None 
+    avatar_bytes = None
     async with aiohttp.ClientSession() as session:
         async with session.get(str(avatar_url)) as resp:
             if resp.status != 200:
@@ -143,46 +143,46 @@ async def create_welcome_image(member):
                 default_avatar_size = 210
                 avatar_img = Image.new('RGBA', (default_avatar_size, default_avatar_size), color=(100, 100, 100, 255))
             else:
-                avatar_bytes = await resp.read() 
+                avatar_bytes = await resp.read()
                 data = io.BytesIO(avatar_bytes)
-                avatar_img = Image.open(data).convert("RGBA") 
+                avatar_img = Image.open(data).convert("RGBA")
                 print(f"DEBUG: Đã tải avatar cho {member.name}.")
 
-    avatar_size = 210 
+    avatar_size = 210
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
 
     avatar_x = img_width // 2 - avatar_size // 2
     avatar_y = int(img_height * 0.36) - avatar_size // 2
 
     dominant_color_from_avatar = None
-    if avatar_bytes: 
+    if avatar_bytes:
         dominant_color_from_avatar = await get_dominant_color(avatar_bytes)
 
-    if dominant_color_from_avatar is None: 
+    if dominant_color_from_avatar is None:
         dominant_color_from_avatar = (0, 252, 233) # Default Cyan
 
     _, _, initial_l = rgb_to_hsl(*dominant_color_from_avatar)
 
-    if initial_l < 0.35: 
-        stroke_color_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.8, clamp_min_l=0.5) 
-    else: 
+    if initial_l < 0.35:
+        stroke_color_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.8, clamp_min_l=0.5)
+    else:
         stroke_color_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=1.15, saturation_factor=1.3)
 
-    stroke_color = (*stroke_color_rgb, 255) 
+    stroke_color = (*stroke_color_rgb, 255)
 
     # --- TẠO LỚP NỀN HÌNH TRÒN PHÍA SAU AVATAR (CHỈ OPACITY, KHÔNG BLUR) ---
-    blur_bg_size = avatar_size 
+    blur_bg_size = avatar_size
     blur_bg_x = avatar_x
     blur_bg_y = avatar_y
 
     # Màu nền với alpha 50% (128/255)
-    blur_color_with_alpha = (*stroke_color_rgb, 128) 
+    blur_color_with_alpha = (*stroke_color_rgb, 128)
 
     # Tạo một layer tạm thời chỉ chứa hình tròn màu với độ trong suốt
     blur_bg_raw_circle = Image.new('RGBA', (blur_bg_size, blur_bg_size), (0, 0, 0, 0))
     draw_blur_bg_raw = ImageDraw.Draw(blur_bg_raw_circle)
     draw_blur_bg_raw.ellipse((0, 0, blur_bg_size, blur_bg_size), fill=blur_color_with_alpha)
-    
+
     # Dán lớp nền (hình tròn với độ trong suốt) vào ảnh chính.
     # KHÔNG ÁP DỤNG GAUSSIAN BLUR
     img.paste(blur_bg_raw_circle, (blur_bg_x, blur_bg_y), blur_bg_raw_circle)
@@ -193,22 +193,22 @@ async def create_welcome_image(member):
     gap_size = 5         # Khoảng trống trong suốt giữa stroke và avatar (giá trị đã điều chỉnh)
 
     # Kích thước của vòng tròn ngoài cùng của stroke
-    outer_stroke_diameter = avatar_size + (gap_size * 2) + (stroke_thickness * 2) 
-    
+    outer_stroke_diameter = avatar_size + (gap_size * 2) + (stroke_thickness * 2)
+
     # Kích thước của vòng tròn bên trong của stroke (tạo khoảng trống trong suốt)
-    inner_stroke_diameter = avatar_size + (gap_size * 2) 
+    inner_stroke_diameter = avatar_size + (gap_size * 2)
 
     supersample_factor = 4
-    
+
     # Tạo một layer tạm thời lớn hơn để vẽ stroke với anti-aliasing
-    temp_stroke_layer_supersampled = Image.new('RGBA', 
-                                                (outer_stroke_diameter * supersample_factor, outer_stroke_diameter * supersample_factor), 
+    temp_stroke_layer_supersampled = Image.new('RGBA',
+                                                (outer_stroke_diameter * supersample_factor, outer_stroke_diameter * supersample_factor),
                                                 (0, 0, 0, 0))
     draw_temp_stroke = ImageDraw.Draw(temp_stroke_layer_supersampled)
 
     # Vẽ vòng tròn ngoài cùng (màu của stroke)
     draw_temp_stroke.ellipse(
-        (0, 0, 
+        (0, 0,
          outer_stroke_diameter * supersample_factor, outer_stroke_diameter * supersample_factor),
         fill=stroke_color
     )
@@ -238,7 +238,7 @@ async def create_welcome_image(member):
     # --- DÁN AVATAR CHÍNH VÀ ĐẢM BẢO NÓ TRÒN ĐÚNG KÍCH THƯỚC (210x210) ---
     # Tạo một layer tạm thời để vẽ avatar lên đó và áp dụng mask
     avatar_layer = Image.new('RGBA', (avatar_size, avatar_size), (0, 0, 0, 0))
-    avatar_layer.paste(avatar_img, (0, 0)) 
+    avatar_layer.paste(avatar_img, (0, 0))
 
     # Tạo mask hình tròn cho avatar với kích thước chính xác 210x210
     mask_supersample_factor = 4
@@ -246,12 +246,12 @@ async def create_welcome_image(member):
     circular_mask_raw = Image.new('L', (mask_raw_size, mask_raw_size), 0)
     draw_circular_mask_raw = ImageDraw.Draw(circular_mask_raw)
     draw_circular_mask_raw.ellipse((0, 0, mask_raw_size, mask_raw_size), fill=255)
-    
+
     circular_mask_smoothed = circular_mask_raw.resize((avatar_size, avatar_size), Image.LANCZOS)
 
     try:
         original_alpha = avatar_layer.split()[3]
-    except ValueError: 
+    except ValueError:
         original_alpha = Image.new('L', circular_mask_smoothed.size, 255) # Use circular_mask_smoothed.size here
 
     final_alpha_mask = Image.composite(circular_mask_smoothed, Image.new('L', circular_mask_smoothed.size, 0), original_alpha)
@@ -259,7 +259,7 @@ async def create_welcome_image(member):
     img.paste(avatar_layer, (avatar_x, avatar_y), final_alpha_mask)
 
 
-    y_offset_from_avatar = 20 
+    y_offset_from_avatar = 20
     welcome_text_y_pos = avatar_y + avatar_size + y_offset_from_avatar
 
     # --- VẼ CHỮ WELCOME ---
@@ -267,13 +267,13 @@ async def create_welcome_image(member):
     welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
     welcome_text_x = (img_width - welcome_text_width) / 2
 
-    shadow_color_welcome_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=0.6, saturation_factor=1.0, clamp_min_l=0.15, clamp_max_l=0.45) 
-    shadow_color_welcome = (*shadow_color_welcome_rgb, 255) 
+    shadow_color_welcome_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=0.6, saturation_factor=1.0, clamp_min_l=0.15, clamp_max_l=0.45)
+    shadow_color_welcome = (*shadow_color_welcome_rgb, 255)
 
     draw.text((welcome_text_x + shadow_offset, welcome_text_y_pos + shadow_offset),
               welcome_text, font=font_welcome, fill=shadow_color_welcome)
     draw.text((welcome_text_x, welcome_text_y_pos),
-              welcome_text, font=font_welcome, fill=(255, 255, 255)) 
+              welcome_text, font=font_welcome, fill=(255, 255, 255))
 
     # --- VẼ TÊN NGƯỜI DÙNG ---
     name_text = member.display_name
@@ -282,17 +282,17 @@ async def create_welcome_image(member):
 
     welcome_bbox_for_height = draw.textbbox((0,0), welcome_text, font=font_welcome)
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
-    name_text_y = welcome_text_y_pos + welcome_actual_height + 10  
+    name_text_y = welcome_text_y_pos + welcome_actual_height + 10
 
-    shadow_color_name_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=0.5, saturation_factor=1.0, clamp_min_l=0.1, clamp_max_l=0.4) 
-    shadow_color_name = (*shadow_color_name_rgb, 255) 
+    shadow_color_name_rgb = adjust_color_brightness_saturation(dominant_color_from_avatar, brightness_factor=0.5, saturation_factor=1.0, clamp_min_l=0.1, clamp_max_l=0.4)
+    shadow_color_name = (*shadow_color_name_rgb, 255)
     draw.text((name_text_x + shadow_offset, name_text_y + shadow_offset),
               name_text, font=font_name, fill=shadow_color_name)
     draw.text((name_text_x, name_text_y),
-              name_text, font=font_name, fill=stroke_color) 
+              name_text, font=font_name, fill=stroke_color)
 
     # --- THÊM ĐƯỜNG KẺ TRANG TRÍ DƯỚI TÊN ---
-    line_color = stroke_color_rgb 
+    line_color = stroke_color_rgb
     line_thickness = 3
     line_length = 150
 
@@ -301,7 +301,7 @@ async def create_welcome_image(member):
 
     name_bbox_for_height = draw.textbbox((0,0), name_text, font=font_name)
     name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
-    line_y = name_text_y + name_actual_height + 10  
+    line_y = name_text_y + name_actual_height + 10
 
     draw.line([(line_x1, line_y), (line_x2, line_y)], fill=line_color, width=line_thickness)
 
@@ -310,30 +310,22 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- CÁC PHẦN MỚI THÊM VÀO ĐÂY ---
+# ID kênh để gửi tin nhắn "đang hoạt động"
+CHANNEL_ID_FOR_HEARTBEAT = 1379789952610467971
 
-# ID kênh mới: 1379721599749591101
-CHANNEL_ID_TO_SEND = 1379721599749591101 
-
-@tasks.loop(seconds=60 * 60) # Lặp lại mỗi 15 phút (15 * 60 giây)
-async def send_periodic_message():
-    channel = bot.get_channel(CHANNEL_ID_TO_SEND)
+@tasks.loop(seconds=30 * 60) # Lặp lại mỗi 30 phút (30 * 60 giây)
+async def send_heartbeat_message():
+    channel = bot.get_channel(CHANNEL_ID_FOR_HEARTBEAT)
     if channel:
         try:
-            # Mở file nuoc.gif và gửi
-            with open("nuoc.gif", "rb") as f:
-                picture = discord.File(f)
-                await channel.send(" **Uống nước đi người ae** 💦", file=picture)
-            print(f"DEBUG: Đã gửi tin nhắn 'Uống nước đi ae' và ảnh nuoc.gif đến kênh {channel.name} (ID: {CHANNEL_ID_TO_SEND})")
-        except FileNotFoundError:
-            print(f"LỖI: Không tìm thấy file nuoc.gif trong cùng thư mục với main.py.")
-            await channel.send("Uống nước đi ae (Lỗi: Không tìm thấy ảnh nuoc.gif).") # Gửi tin nhắn không có ảnh
+            await channel.send("Đang hoạt động")
+            print(f"DEBUG: Đã gửi tin nhắn 'Đang hoạt động' đến kênh {channel.name} (ID: {CHANNEL_ID_FOR_HEARTBEAT})")
         except discord.Forbidden:
-            print(f"LỖI: Bot không có quyền gửi tin nhắn hoặc đính kèm file vào kênh {channel.name} (ID: {CHANNEL_ID_TO_SEND}).")
+            print(f"LỖI: Bot không có quyền gửi tin nhắn vào kênh {channel.name} (ID: {CHANNEL_ID_FOR_HEARTBEAT}).")
         except Exception as e:
-            print(f"LỖI khi gửi tin nhắn tự động: {e}")
+            print(f"LỖI khi gửi tin nhắn 'đang hoạt động': {e}")
     else:
-        print(f"LỖI: Không tìm thấy kênh với ID {CHANNEL_ID_TO_SEND} để gửi tin nhắn tự động.")
+        print(f"LỖI: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_HEARTBEAT} để gửi tin nhắn 'đang hoạt động'.")
 
 
 # --- Các sự kiện của bot ---
@@ -342,21 +334,22 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
     try:
+        # Chỉ đồng bộ slash commands nếu biến môi trường SYNC_SLASH_COMMANDS được đặt là 'True'
         if os.getenv('SYNC_SLASH_COMMANDS') == 'True':
-            synced = await bot.tree.sync()  
+            synced = await bot.tree.sync()
             print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
         else:
             print("Bỏ qua đồng bộ lệnh slash. Đặt SYNC_SLASH_COMMANDS = True trên Render để đồng bộ nếu cần.")
     except Exception as e:
         print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
-    
-    # BẮT ĐẦU TÁC VỤ GỬI TIN NHẮN TỰ ĐỘNG KHI BOT ĐÃ SẴN SÀNG
-    send_periodic_message.start()
+
+    # BẮT ĐẦU TÁC VỤ GỬI TIN NHẮN "ĐANG HOẠT ĐỘNG" KHI BOT ĐÃ SẴN SÀNG
+    send_heartbeat_message.start()
 
 
 @bot.event
 async def on_member_join(member):
-    channel_id = 1322848542758277202  # Kênh chào mừng bạn đã thiết lập trước đó
+    channel_id = 1322848542758277202 # Kênh chào mừng bạn đã thiết lập trước đó
     channel = bot.get_channel(channel_id)
 
     if channel is None:
@@ -366,7 +359,7 @@ async def on_member_join(member):
     if not channel.permissions_for(member.guild.me).send_messages or \
        not channel.permissions_for(member.guild.me).attach_files:
         print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn hoặc đính kèm file trong kênh {channel.name} (ID: {channel_id}).")
-        return 
+        return
 
     try:
         image_bytes = await create_welcome_image(member)
@@ -377,24 +370,24 @@ async def on_member_join(member):
         print(f"LỖỖI CHÀO MỪNG: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
         await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# --- Slash Command để TEST tạo ảnh welcome ---
+# --- Slash Command để TEST tạo ảnh welcome (giữ nguyên) ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True) 
+@app_commands.checks.has_permissions(administrator=True)
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
-    await interaction.response.defer(thinking=True)  
+    await interaction.response.defer(thinking=True)
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
-        image_bytes = await create_welcome_image(member_to_test)  
+        image_bytes = await create_welcome_image(member_to_test)
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
         print("DEBUG: Đã gửi ảnh test chào mừng thành công!")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
-# --- Để bot luôn online trên Render ---
+# --- Để bot luôn online trên Render (giữ nguyên) ---
 from flask import Flask
 from threading import Thread
 
