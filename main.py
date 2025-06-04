@@ -323,7 +323,7 @@ async def send_periodic_message():
             # Mở file nuoc.gif và gửi
             with open("nuoc.gif", "rb") as f:
                 picture = discord.File(f)
-                await channel.send("Uống nước đi ae", file=picture)
+                await channel.send(" **Uống nước đi người ae** 💦", file=picture)
             print(f"DEBUG: Đã gửi tin nhắn 'Uống nước đi ae' và ảnh nuoc.gif đến kênh {channel.name} (ID: {CHANNEL_ID_TO_SEND})")
         except FileNotFoundError:
             print(f"LỖI: Không tìm thấy file nuoc.gif trong cùng thư mục với main.py.")
