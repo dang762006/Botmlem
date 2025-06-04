@@ -315,7 +315,7 @@ async def create_welcome_image(member):
 # ID kênh mới: 1379721599749591101
 CHANNEL_ID_TO_SEND = 1379721599749591101 
 
-@tasks.loop(seconds=15 * 60) # Lặp lại mỗi 15 phút (15 * 60 giây)
+@tasks.loop(seconds=60 * 60) # Lặp lại mỗi 15 phút (15 * 60 giây)
 async def send_periodic_message():
     channel = bot.get_channel(CHANNEL_ID_TO_SEND)
     if channel:
