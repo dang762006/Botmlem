@@ -1,13 +1,13 @@
 import discord
-from discord.ext import commands, tasks # Import tasks
+from discord.ext import commands, tasks
 from discord import app_commands
 import os
-from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter, ImageSequence # Import ImageSequence
+from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter, ImageSequence
 import io
 import aiohttp
 import asyncio      
 from colorthief import ColorThief 
-import random # Import random
+import random
 
 # --- Các hàm xử lý màu sắc (giữ nguyên) ---
 def rgb_to_hsl(r, g, b):
@@ -60,18 +60,15 @@ def hsl_to_rgb(h, s, l):
 def adjust_color_brightness_saturation(rgb_color, brightness_factor=1.0, saturation_factor=1.0, clamp_min_l=0.0, clamp_max_l=1.0):
     h, s, l = rgb_to_hsl(*rgb_color)
 
-    # Áp dụng brightness_factor trước
     l = l * brightness_factor
 
-    # Sau đó mới kẹp giá trị L vào phạm vi mong muốn (chỉ áp dụng nếu có giới hạn)
-    if clamp_min_l != 0.0 or clamp_max_l != 1.0: # Chỉ kẹp nếu có giới hạn cụ thể
+    if clamp_min_l != 0.0 or clamp_max_l != 1.0:
         l = min(clamp_max_l, max(clamp_min_l, l)) 
 
     s = min(1.0, max(0.0, s * saturation_factor))
 
     return hsl_to_rgb(h, s, l)
 
-# Hàm để lấy màu chủ đạo từ hình ảnh (chỉ lấy màu gốc, không điều chỉnh độ sáng ở đây)
 async def get_dominant_color(image_bytes):
     try:
         f = io.BytesIO(image_bytes)
@@ -95,22 +92,13 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Hàm hỗ trợ dán ảnh đã xoay vào ảnh nền
 def paste_rotated_image(background_img, foreground_img, paste_center_x, paste_center_y, angle):
-    """
-    Dán một ảnh (foreground_img) đã được xoay một góc (angle) vào một ảnh nền (background_img)
-    tại một vị trí trung tâm (paste_center_x, paste_center_y) nhất định.
-    Giữ kênh alpha của ảnh foreground.
-    """
-    # Xoay ảnh foreground, mở rộng khung hình để không bị cắt
     rotated_fg = foreground_img.rotate(angle, expand=True)
 
-    # Tính toán vị trí gốc mới của ảnh đã xoay (góc trên bên trái của bounding box mới)
     rotated_fg_width, rotated_fg_height = rotated_fg.size
     paste_x = int(paste_center_x - rotated_fg_width / 2)
     paste_y = int(paste_center_y - rotated_fg_height / 2)
 
-    # Dán ảnh đã xoay lên ảnh nền, sử dụng kênh alpha của chính nó để trong suốt
     background_img.paste(rotated_fg, (paste_x, paste_y), rotated_fg)
     return background_img
 
@@ -140,7 +128,7 @@ async def create_welcome_image(member):
 
     background_image_path = "welcome.png"
     try:
-        img = Image.open(background_image_path).convert("RGBA") # Đảm bảo ảnh nền cũng là RGBA
+        img = Image.open(background_image_path).convert("RGBA")
         img_width, img_height = img.size
         print(f"DEBUG: Đã tải ảnh nền: {background_image_path} với kích thước {img_width}x{img_height}")
     except FileNotFoundError:
@@ -154,7 +142,6 @@ async def create_welcome_image(member):
 
     draw = ImageDraw.Draw(img)
 
-    # --- Xử lý Avatar người dùng và viền stroke ---
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     print(f"DEBUG: Đang tải avatar từ URL: {avatar_url}")
     avatar_bytes = None 
@@ -301,35 +288,46 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-
 CHANNEL_ID_TO_SEND = 1379721599749591101 # ID kênh cho lời nhắc uống nước
 
-# --- HÀM TẠO ẢNH NHẮC NHỞ UỐNG NƯỚC (hỗ trợ GIF) ---
 async def create_water_reminder_image(guild: discord.Guild):
     print("DEBUG: Bắt đầu tạo ảnh nhắc nhở uống nước.")
     
-    # 1. Load background 1.png
     try:
         base_img_template = Image.open("1.png").convert("RGBA")
         img_width, img_height = base_img_template.size
         print(f"DEBUG: Đã tải 1.png với kích thước {img_width}x{img_height}.")
     except FileNotFoundError:
         print("LỖI: Không tìm thấy file 1.png. Tạo ảnh nền đen mặc định.")
-        img_width, img_height = 800, 450 # Kích thước mặc định nếu không có nền
+        img_width, img_height = 800, 450
         base_img_template = Image.new('RGBA', (img_width, img_height), color=(0, 0, 0, 255))
     except Exception as e:
         print(f"LỖI khi tải 1.png: {e}. Tạo ảnh nền đen mặc định.")
         img_width, img_height = 800, 450
         base_img_template = Image.new('RGBA', (img_width, img_height), color=(0, 0, 0, 255))
 
-
-    # 2. Lấy và xử lý avatar (chọn ngẫu nhiên)
+    # 2. Lấy và xử lý avatar (ưu tiên người online, nếu không có thì lấy bot)
     online_members = [m for m in guild.members if not m.bot and m.status != discord.Status.offline]
-    selected_member = random.choice(online_members) if online_members else None
+    bots_in_guild = [m for m in guild.members if m.bot]
 
-    if selected_member:
-        avatar_url = selected_member.avatar.url if selected_member.avatar else selected_member.default_avatar.url
-        print(f"DEBUG: Đang tải avatar của {selected_member.display_name} từ URL: {avatar_url}")
+    selected_member_for_avatar = None
+    if online_members:
+        selected_member_for_avatar = random.choice(online_members)
+        print(f"DEBUG: Đã chọn người dùng online: {selected_member_for_avatar.display_name}")
+    elif bots_in_guild:
+        # Nếu không có người online, chọn một bot bất kỳ
+        selected_member_for_avatar = random.choice(bots_in_guild)
+        print(f"DEBUG: Không có người dùng online, đã chọn bot: {selected_member_for_avatar.display_name}")
+    else:
+        print("DEBUG: Không có người dùng online và không có bot. Tạo avatar placeholder.")
+        # Tạo avatar placeholder nếu không có ai
+        avatar_img = Image.new('RGBA', (210, 210), color=(50, 50, 50, 255))
+        
+    avatar_img = None # Khởi tạo để tránh lỗi nếu không có ai được chọn
+
+    if selected_member_for_avatar:
+        avatar_url = selected_member_for_avatar.avatar.url if selected_member_for_avatar.avatar else selected_member_for_avatar.default_avatar.url
+        print(f"DEBUG: Đang tải avatar từ URL: {avatar_url}")
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(str(avatar_url)) as resp:
@@ -337,14 +335,12 @@ async def create_water_reminder_image(guild: discord.Guild):
                         avatar_bytes = await resp.read()
                         avatar_img = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
                     else:
-                        print(f"LỖI AVATAR: Không tải được avatar cho {selected_member.display_name}. Status: {resp.status}")
-                        # Tạo avatar mặc định nếu không tải được
+                        print(f"LỖI AVATAR: Không tải được avatar cho {selected_member_for_avatar.display_name}. Status: {resp.status}")
                         avatar_img = Image.new('RGBA', (210, 210), color=(100, 100, 100, 255))
         except Exception as e:
-            print(f"LỖI AVATAR: Exception khi tải avatar cho {selected_member.display_name}: {e}")
+            print(f"LỖI AVATAR: Exception khi tải avatar cho {selected_member_for_avatar.display_name}: {e}")
             avatar_img = Image.new('RGBA', (210, 210), color=(100, 100, 100, 255))
         
-        # Cắt tròn, resize
         avatar_size = 210
         avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
         mask = Image.new('L', avatar_img.size, 0)
@@ -352,85 +348,62 @@ async def create_water_reminder_image(guild: discord.Guild):
         draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
         avatar_img.putalpha(mask)
 
-        # Vị trí tâm avatar trên ảnh nền (ước lượng từ ai.jpg)
-        # Avatar nằm ở khoảng 49% chiều rộng và 38% chiều cao
-        avatar_center_x = int(img_width * 0.49) 
-        avatar_center_y = int(img_height * 0.38)
-        
-        # Xoay avatar -15 độ (ngược chiều kim đồng hồ)
-        # Việc dán ảnh động vào ảnh động là phức tạp. Ở đây chúng ta sẽ dán avatar lên từng frame của GIF.
-        # Nên avatar_img sẽ được paste vào mỗi frame.
-
-    else:
-        print("DEBUG: Không có thành viên online để lấy avatar. Tạo avatar placeholder.")
-        # Tạo avatar placeholder nếu không có người online
-        avatar_img = Image.new('RGBA', (210, 210), color=(50, 50, 50, 255))
-        avatar_center_x = int(img_width * 0.49)
-        avatar_center_y = int(img_height * 0.38)
+    avatar_center_x = int(img_width * 0.49) 
+    avatar_center_y = int(img_height * 0.38)
 
     # 3. Load và xử lý nuoc.gif
     potion_image_path = "nuoc.gif"
-    potion_size = 150 # Kích thước lọ nước
-    potion_center_x = int(img_width * 0.72) # Vị trí tâm lọ nước (ước lượng từ ai.jpg)
-    potion_center_y = int(img_height * 0.58) # Dịch xuống một chút để đúng vị trí trong ai.jpg
+    potion_size = 150
+    potion_center_x = int(img_width * 0.72)
+    potion_center_y = int(img_height * 0.58)
 
     output_frames = []
-    gif_duration = 0 # Thời gian hiển thị mỗi frame của GIF gốc
+    gif_duration = 0
 
     try:
         with Image.open(potion_image_path) as potion_gif_raw:
             if potion_gif_raw.format == 'GIF':
                 print(f"DEBUG: Đã tải {potion_image_path} (GIF).")
-                for frame in ImageSequence.Iterator(potion_gif_raw):
-                    # Chuyển frame hiện tại sang RGBA và resize
+                for frame_idx, frame in enumerate(ImageSequence.Iterator(potion_gif_raw)):
                     current_potion_frame = frame.convert("RGBA").resize((potion_size, potion_size), Image.LANCZOS)
-                    
-                    # Tạo một bản sao của ảnh nền (1.png) cho mỗi frame
-                    # Đảm bảo base_img_template không bị thay đổi giữa các frame
                     current_combined_frame = base_img_template.copy()
 
-                    # Dán avatar lên mỗi frame
-                    if selected_member:
+                    if avatar_img: # Chỉ dán avatar nếu nó đã được tải/tạo thành công
                         paste_rotated_image(current_combined_frame, avatar_img, avatar_center_x, avatar_center_y, -15)
                     
-                    # Dán lọ nước đã xoay lên mỗi frame
                     paste_rotated_image(current_combined_frame, current_potion_frame, potion_center_x, potion_center_y, 15)
 
                     output_frames.append(current_combined_frame)
                     
-                    # Lấy thời gian hiển thị frame nếu có (default là 100ms)
                     if 'duration' in frame.info:
                         gif_duration = frame.info['duration']
                     else:
-                        gif_duration = 100 # Default if not specified
+                        gif_duration = 100
 
                 print(f"DEBUG: Đã xử lý {len(output_frames)} frame từ nuoc.gif. Duration: {gif_duration}ms.")
             else:
                 print(f"CẢNH BÁO: {potion_image_path} không phải là GIF. Chỉ xử lý frame đầu tiên như ảnh tĩnh.")
-                # Nếu không phải GIF, xử lý như ảnh tĩnh
                 current_potion_frame = Image.open(potion_image_path).convert("RGBA").resize((potion_size, potion_size), Image.LANCZOS)
                 
                 current_combined_frame = base_img_template.copy()
-                if selected_member:
+                if avatar_img:
                     paste_rotated_image(current_combined_frame, avatar_img, avatar_center_x, avatar_center_y, -15)
                 paste_rotated_image(current_combined_frame, current_potion_frame, potion_center_x, potion_center_y, 15)
                 output_frames.append(current_combined_frame)
-                gif_duration = 100 # Default duration for static image
+                gif_duration = 100
 
 
     except FileNotFoundError:
-        print(f"LỖI: Không tìm thấy file {potion_image_path}. Tạo ảnh nhắc nhở không có lọ nước và avatar.")
-        # Xử lý nếu không tìm thấy nuoc.gif: chỉ nền và avatar
+        print(f"LỖI: Không tìm thấy file {potion_image_path}. Tạo ảnh nhắc nhở không có lọ nước.")
         base_img_copy = base_img_template.copy()
-        if selected_member:
+        if avatar_img:
             paste_rotated_image(base_img_copy, avatar_img, avatar_center_x, avatar_center_y, -15)
         output_frames.append(base_img_copy)
         gif_duration = 100
     except Exception as e:
         print(f"LỖI khi xử lý ảnh lọ nước GIF: {e}. Tạo ảnh nhắc nhở không có lọ nước hoặc gặp lỗi hiển thị.")
-        # Xử lý lỗi khi mở GIF
         base_img_copy = base_img_template.copy()
-        if selected_member:
+        if avatar_img:
             paste_rotated_image(base_img_copy, avatar_img, avatar_center_x, avatar_center_y, -15)
         output_frames.append(base_img_copy)
         gif_duration = 100
@@ -443,24 +416,20 @@ async def create_water_reminder_image(guild: discord.Guild):
         
         final_frames_with_overlay = []
         for frame in output_frames:
-            # Dán lớp hiệu ứng lên trên cùng của mỗi frame, sử dụng kênh alpha của chính nó
             frame.paste(overlay_img, (0, 0), overlay_img)
             final_frames_with_overlay.append(frame)
-        output_frames = final_frames_with_overlay # Cập nhật lại output_frames
+        output_frames = final_frames_with_overlay
     except FileNotFoundError:
         print("LỖI: Không tìm thấy file 2.png. Không thêm hiệu ứng ánh sáng.")
     except Exception as e:
         print(f"LỖI khi xử lý ảnh hiệu ứng 2.png: {e}. Không thêm hiệu ứng ánh sáng.")
 
-    # Lưu chuỗi các frame thành GIF hoặc PNG (nếu chỉ có 1 frame)
     img_byte_arr = io.BytesIO()
     if len(output_frames) > 1:
-        # Lưu dưới dạng GIF nếu có nhiều frame
         output_frames[0].save(img_byte_arr, format='GIF', append_images=output_frames[1:], 
-                              save_all=True, duration=gif_duration, loop=0) # loop=0 là lặp vô hạn
+                              save_all=True, duration=gif_duration, loop=0)
         print("DEBUG: Đã lưu ảnh nhắc nhở dưới dạng GIF.")
     else:
-        # Lưu dưới dạng PNG nếu chỉ có 1 frame
         output_frames[0].save(img_byte_arr, format='PNG')
         print("DEBUG: Đã lưu ảnh nhắc nhở dưới dạng PNG (chỉ 1 frame).")
 
@@ -468,25 +437,24 @@ async def create_water_reminder_image(guild: discord.Guild):
     print("DEBUG: Kết thúc tạo ảnh nhắc nhở uống nước.")
     return img_byte_arr
 
-# --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
     print(f'{bot.user} đã sẵn sàng!')
     print('Bot đã online và có thể hoạt động.')
     try:
+        # Đồng bộ hóa tất cả các lệnh slash commands
         synced = await bot.tree.sync()  
         print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
     except Exception as e:
         print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
     
-    # Bắt đầu vòng lặp gửi tin nhắn định kỳ
     if not send_periodic_message.is_running():
         send_periodic_message.start()
 
 
 @bot.event
 async def on_member_join(member):
-    channel_id = 1322848542758277202  # Kênh chào mừng bạn đã thiết lập trước đó
+    channel_id = 1322848542758277202
     channel = bot.get_channel(channel_id)
 
     if channel is None:
@@ -507,7 +475,6 @@ async def on_member_join(member):
         print(f"LỖỖI CHÀO MỪNG: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
         await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# --- Slash Command để TEST tạo ảnh welcome (giữ nguyên) ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
 @app_commands.checks.has_permissions(administrator=True) 
@@ -524,14 +491,13 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
-# --- Slash Command để TEST tạo ảnh nhắc nhở uống nước ---
 @bot.tree.command(name="testnuoc", description="Tạo và gửi ảnh nhắc nhở uống nước.")
-@app_commands.checks.has_permissions(administrator=True) # Chỉ admin mới dùng được
+@app_commands.checks.has_permissions(administrator=True)
 async def testnuoc_slash(interaction: discord.Interaction):
-    await interaction.response.defer(thinking=True)  # Hiển thị "Bot đang nghĩ..."
+    await interaction.response.defer(thinking=True)
 
-    channel_to_send = interaction.channel # Gửi vào kênh hiện tại
-    guild = interaction.guild # Lấy guild từ interaction
+    channel_to_send = interaction.channel
+    guild = interaction.guild
 
     if guild is None:
         await interaction.followup.send("LỖI: Không thể lấy thông tin server.")
@@ -540,7 +506,7 @@ async def testnuoc_slash(interaction: discord.Interaction):
     try:
         print("DEBUG: Đang tạo ảnh nhắc nhở uống nước cho lệnh testnuoc...")
         image_bytes = await create_water_reminder_image(guild)
-        await channel_to_send.send(file=discord.File(fp=image_bytes, filename='water_reminder.gif')) # Luôn gửi là GIF cho test
+        await channel_to_send.send(file=discord.File(fp=image_bytes, filename='water_reminder.gif'))
         await interaction.followup.send("Đã gửi ảnh nhắc nhở uống nước thành công!")
         print("DEBUG: Đã gửi ảnh nhắc nhở uống nước thành công qua lệnh testnuoc.")
     except Exception as e:
@@ -548,18 +514,14 @@ async def testnuoc_slash(interaction: discord.Interaction):
         print(f"LỖI TESTNUOC: Có lỗi khi tạo hoặc gửi ảnh nhắc nhở: {e}")
 
 
-# --- Tác vụ gửi lời nhắc uống nước định kỳ ---
-@tasks.loop(seconds=60 * 60) # Ví dụ: mỗi 1 giờ
+@tasks.loop(seconds=60 * 60)
 async def send_periodic_message():
     channel = bot.get_channel(CHANNEL_ID_TO_SEND)
     if channel:
         try:
             guild = channel.guild 
             if guild:
-                # Gọi hàm tạo ảnh nhắc nhở
                 water_reminder_image_bytes = await create_water_reminder_image(guild)
-                # Gửi file là GIF nếu có nhiều frame, PNG nếu chỉ 1 frame
-                # Hàm create_water_reminder_image đã tự quyết định định dạng output
                 await channel.send(file=discord.File(fp=water_reminder_image_bytes, filename='water_reminder.gif'))
                 print(f"DEBUG: Đã gửi ảnh nhắc nhở uống nước định kỳ đến kênh {channel.name} (ID: {CHANNEL_ID_TO_SEND})")
             else:
@@ -572,7 +534,6 @@ async def send_periodic_message():
         print(f"LỖI: Không tìm thấy kênh với ID {CHANNEL_ID_TO_SEND} để gửi tin nhắn tự động.")
 
 
-# --- Để bot luôn online trên Replit (giữ nguyên) ---
 from flask import Flask
 from threading import Thread
 
