@@ -313,7 +313,7 @@ async def create_welcome_image(member):
 # ID kênh để gửi tin nhắn "đang hoạt động"
 CHANNEL_ID_FOR_HEARTBEAT = 1379789952610467971
 
-@tasks.loop(seconds=30 * 60) # Lặp lại mỗi 30 phút (30 * 60 giây)
+@tasks.loop(seconds=5 * 60) # Lặp lại mỗi 30 phút (30 * 60 giây)
 async def send_heartbeat_message():
     channel = bot.get_channel(CHANNEL_ID_FOR_HEARTBEAT)
     if channel:
