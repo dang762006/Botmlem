@@ -362,9 +362,30 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
         image_bytes = await create_welcome_image(member_to_test)
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
-        print("DEBUG: Đã gửi ảnh test chào mừng thành công!")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
+# PHẦN MỚI: Thêm lại Flask để Render có thể "ping" và thấy cổng mở
+from flask import Flask
+from threading import Thread
+
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is alive and healthy!" # Tin nhắn này không quan trọng, chỉ để Render thấy phản hồi 200 OK
+
+def run_flask():
+    # Sử dụng cổng từ biến môi trường PORT của Render, mặc định 8080
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# Khởi chạy Flask app trong một luồng riêng biệt
+# Điều này cho phép bot Discord chạy song song mà không bị chặn
+flask_thread = Thread(target=run_flask)
+flask_thread.daemon = True # Đảm bảo luồng Flask sẽ tự tắt khi chương trình chính kết thúc
+flask_thread.start()
+
+# Chạy bot Discord của bạn
 bot.run(TOKEN)
