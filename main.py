@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands, tasks # Giữ lại tasks
+from discord.ext import commands, tasks
 from discord import app_commands
 import os
 from PIL import Image, ImageDraw, ImageFont, ImageOps, ImageFilter
@@ -310,23 +310,6 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# ID kênh để gửi tin nhắn "đang hoạt động"
-CHANNEL_ID_FOR_HEARTBEAT = 1379789952610467971
-
-@tasks.loop(seconds=5 * 60) # Lặp lại mỗi 30 phút (30 * 60 giây)
-async def send_heartbeat_message():
-    channel = bot.get_channel(CHANNEL_ID_FOR_HEARTBEAT)
-    if channel:
-        try:
-            await channel.send("Đang hoạt động")
-            print(f"DEBUG: Đã gửi tin nhắn 'Đang hoạt động' đến kênh {channel.name} (ID: {CHANNEL_ID_FOR_HEARTBEAT})")
-        except discord.Forbidden:
-            print(f"LỖI: Bot không có quyền gửi tin nhắn vào kênh {channel.name} (ID: {CHANNEL_ID_FOR_HEARTBEAT}).")
-        except Exception as e:
-            print(f"LỖI khi gửi tin nhắn 'đang hoạt động': {e}")
-    else:
-        print(f"LỖI: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_HEARTBEAT} để gửi tin nhắn 'đang hoạt động'.")
-
 
 # --- Các sự kiện của bot ---
 @bot.event
@@ -342,9 +325,6 @@ async def on_ready():
             print("Bỏ qua đồng bộ lệnh slash. Đặt SYNC_SLASH_COMMANDS = True trên Render để đồng bộ nếu cần.")
     except Exception as e:
         print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
-
-    # BẮT ĐẦU TÁC VỤ GỬI TIN NHẮN "ĐANG HOẠT ĐỘNG" KHI BOT ĐÃ SẴN SÀNG
-    send_heartbeat_message.start()
 
 
 @bot.event
@@ -385,25 +365,6 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         print("DEBUG: Đã gửi ảnh test chào mừng thành công!")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
-        print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
-
-# --- Để bot luôn online trên Render (giữ nguyên) ---
-from flask import Flask
-from threading import Thread
-
-app = Flask('')
-
-@app.route('/')
-def home():
-    return "Bot is alive!"
-
-def run():
-    app.run(host='0.0.0.0', port=os.getenv('PORT', 8080))
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
-
-keep_alive()
+        print(f"LỖỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
 bot.run(TOKEN)
