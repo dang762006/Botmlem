@@ -8,13 +8,39 @@ import aiohttp
 import asyncio
 from colorthief import ColorThief
 from flask import Flask
-from threading import Thread
-import time # Thêm import này
+import threading # Đổi từ `Thread` sang `threading` cho rõ ràng
 
-# Thêm độ trễ ở đây, trước khi bot.run(TOKEN) được gọi
-print("Đang đợi 5 giây trước khi khởi động bot để tránh rate limit...")
-time.sleep(5) # Đợi 5 giây
-print("Bắt đầu khởi động bot...")
+# --- Khởi tạo Flask app (ĐẶT Ở ĐẦU) ---
+app = Flask(__name__)
+
+# Đặt Health Check Path là /healthz trên Render.com
+@app.route('/')
+def home():
+    """Endpoint chính cho Flask app. Có thể dùng làm Health Check nếu cần."""
+    return "Bot is alive and healthy!"
+
+@app.route('/healthz') # <-- Endpoint Health Check riêng biệt và được khuyến nghị
+def health_check():
+    """Endpoint Health Check riêng biệt cho Render.com."""
+    return "OK", 200 # Trả về mã trạng thái 200 (OK)
+
+def run_flask():
+    """Chạy Flask app trong một luồng riêng biệt."""
+    # Sử dụng cổng từ biến môi trường PORT của Render, mặc định 10000
+    port = int(os.environ.get("PORT", 10000))
+    print(f"Flask server đang chạy trên cổng {port} (để Render Health Check).")
+    app.run(host='0.0.0.0', port=port, debug=False) # Tắt debug mode trong production
+
+# --- Cấu hình Bot Discord ---
+# Lấy TOKEN từ biến môi trường. Đảm bảo tên biến là DISCORD_BOT_TOKEN hoặc TOKEN
+# Nếu bạn đã đặt là 'TOKEN' trên Render, hãy giữ nguyên `os.getenv('TOKEN')`
+TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Hoặc os.getenv('TOKEN') nếu bạn đã cấu hình như vậy
+
+intents = discord.Intents.default()
+intents.members = True
+intents.message_content = True # Quan trọng: Cần bật trong Discord Developer Portal nếu bot đọc nội dung tin nhắn
+
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 # --- Các hàm xử lý màu sắc (giữ nguyên) ---
 def rgb_to_hsl(r, g, b):
@@ -91,15 +117,7 @@ async def get_dominant_color(image_bytes):
         print(f"LỖI COLORTHIEF: Không thể lấy màu chủ đạo từ avatar: {e}")
         return None
 
-TOKEN = os.getenv('DISCORD_BOT_TOKEN')
-
-intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True
-
-bot = commands.Bot(command_prefix='!', intents=intents)
-
-# Sử dụng cache cho avatar để tránh tải lại nhiều lần trong thời gian ngắn (nếu có thể xảy ra)
+# Sử dụng cache cho avatar để tránh tải lại nhiều lần trong thời gian ngắn
 avatar_cache = {}
 CACHE_TTL = 300 # Thời gian sống của cache avatar là 300 giây (5 phút)
 
@@ -169,7 +187,6 @@ async def create_welcome_image(member):
         default_avatar_size = 210
         avatar_img = Image.new('RGBA', (default_avatar_size, default_avatar_size), color=(100, 100, 100, 255))
 
-
     avatar_size = 210
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
 
@@ -208,7 +225,6 @@ async def create_welcome_image(member):
     # Dán lớp nền (hình tròn với độ trong suốt) vào ảnh chính.
     # KHÔNG ÁP DỤNG GAUSSIAN BLUR
     img.paste(blur_bg_raw_circle, (blur_bg_x, blur_bg_y), blur_bg_raw_circle)
-
 
     # --- VẼ STROKE (VIỀN) CÓ KHOẢNG TRỐNG TRONG SUỐT VỚI AVATAR ---
     stroke_thickness = 6 # Độ dày của viền stroke
@@ -256,7 +272,6 @@ async def create_welcome_image(member):
 
     img.paste(stroke_final_image, (stroke_paste_x, stroke_paste_y), stroke_final_image)
 
-
     # --- DÁN AVATAR CHÍNH VÀ ĐẢM BẢO NÓ TRÒN ĐÚNG KÍCH THƯỚC (210x210) ---
     # Tạo một layer tạm thời để vẽ avatar lên đó và áp dụng mask
     avatar_layer = Image.new('RGBA', (avatar_size, avatar_size), (0, 0, 0, 0))
@@ -279,7 +294,6 @@ async def create_welcome_image(member):
     final_alpha_mask = Image.composite(circular_mask_smoothed, Image.new('L', circular_mask_smoothed.size, 0), original_alpha)
 
     img.paste(avatar_layer, (avatar_x, avatar_y), final_alpha_mask)
-
 
     y_offset_from_avatar = 20
     welcome_text_y_pos = avatar_y + avatar_size + y_offset_from_avatar
@@ -332,10 +346,10 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-
 # --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
+    """Xử lý sự kiện khi bot sẵn sàng."""
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
     try:
@@ -347,7 +361,6 @@ async def on_ready():
             print("Bỏ qua đồng bộ lệnh slash. Đặt SYNC_SLASH_COMMANDS = True trên Render để đồng bộ nếu cần.")
     except Exception as e:
         print(f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal.")
-
 
 @bot.event
 async def on_member_join(member):
@@ -375,7 +388,7 @@ async def on_member_join(member):
         print(f"LỖI CHÀO MỪNG KHÁC: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
         await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# --- Slash Command để TEST tạo ảnh welcome (giữ nguyên) ---
+# --- Slash Command để TEST tạo ảnh welcome ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
 @app_commands.checks.has_permissions(administrator=True)
@@ -392,23 +405,35 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
-# PHẦN MỚI: Thêm lại Flask để Render có thể "ping" và thấy cổng mở
-app = Flask('')
+# --- Khởi chạy Flask và Bot Discord ---
+async def start_bot_and_flask():
+    """Hàm async để khởi động cả Flask và bot Discord."""
+    # Khởi động Flask app trong một thread riêng
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True # Đặt thread là daemon để nó tự động tắt khi chương trình chính kết thúc
+    flask_thread.start()
 
-@app.route('/')
-def home():
-    return "Bot is alive and healthy!" # Tin nhắn này không quan trọng, chỉ để Render thấy phản hồi 200 OK
+    # Thêm độ trễ trước khi khởi động bot Discord để tránh rate limit ban đầu
+    print("Đang đợi 5 giây trước khi khởi động bot Discord để tránh rate limit...")
+    await asyncio.sleep(5) # Sử dụng asyncio.sleep cho các hàm async
+    print("Bắt đầu khởi động bot Discord...")
 
-def run_flask():
-    # Sử dụng cổng từ biến môi trường PORT của Render, mặc định 8080
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port)
+    try:
+        await bot.start(TOKEN) # Sử dụng bot.start thay vì bot.run trong hàm async
+    except discord.errors.HTTPException as e:
+        if e.status == 429:
+            print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e.text}")
+            print("Có vẻ như Discord đã giới hạn tốc độ đăng nhập của bạn. Vui lòng đợi một thời gian (ví dụ: 5-10 phút) rồi thử lại.")
+            print("Đảm bảo bạn không khởi động lại bot quá thường xuyên hoặc có nhiều phiên bản bot đang chạy.")
+        else:
+            print(f"Một lỗi HTTP khác đã xảy ra khi đăng nhập: {e}")
+            raise # Ném lỗi nếu không phải 429 để nó tiếp tục hiển thị
+    except Exception as e:
+        print(f"Một lỗi không xác định đã xảy ra: {e}")
 
-# Khởi chạy Flask app trong một luồng riêng biệt
-# Điều này cho phép bot Discord chạy song song mà không bị chặn
-flask_thread = Thread(target=run_flask)
-flask_thread.daemon = True # Đảm bảo luồng Flask sẽ tự tắt khi chương trình chính kết thúc
-flask_thread.start()
-
-# Chạy bot Discord của bạn
-bot.run(TOKEN)
+if __name__ == '__main__':
+    if not TOKEN:
+        print("Lỗi: TOKEN không được tìm thấy. Vui lòng thiết lập biến môi trường 'DISCORD_BOT_TOKEN' hoặc 'TOKEN'.")
+    else:
+        # Chạy hàm async chính
+        asyncio.run(start_bot_and_flask())
