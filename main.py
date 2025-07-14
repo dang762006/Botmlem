@@ -9,6 +9,12 @@ import asyncio
 from colorthief import ColorThief
 from flask import Flask
 from threading import Thread
+import time # Thêm import này
+
+# Thêm độ trễ ở đây, trước khi bot.run(TOKEN) được gọi
+print("Đang đợi 5 giây trước khi khởi động bot để tránh rate limit...")
+time.sleep(5) # Đợi 5 giây
+print("Bắt đầu khởi động bot...")
 
 # --- Các hàm xử lý màu sắc (giữ nguyên) ---
 def rgb_to_hsl(r, g, b):
@@ -93,7 +99,6 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- Định nghĩa hàm tạo ảnh chào mừng (giữ nguyên logic, chỉ thêm cache avatar) ---
 # Sử dụng cache cho avatar để tránh tải lại nhiều lần trong thời gian ngắn (nếu có thể xảy ra)
 avatar_cache = {}
 CACHE_TTL = 300 # Thời gian sống của cache avatar là 300 giây (5 phút)
@@ -359,11 +364,6 @@ async def on_member_join(member):
         return
 
     try:
-        # Giới hạn số lần tạo ảnh nếu có quá nhiều thành viên vào cùng lúc
-        # Discord.py đã có cơ chế xử lý giới hạn tốc độ nội bộ, nhưng đây là một biện pháp phòng ngừa thêm
-        # Nếu bot liên tục gặp lỗi 429 từ Discord, có thể cân nhắc thêm một độ trễ nhỏ ở đây.
-        # Ví dụ: await asyncio.sleep(1) # Đợi 1 giây trước khi tạo ảnh để giảm tải
-        
         image_bytes = await create_welcome_image(member)
         await channel.send(f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
                            file=discord.File(fp=image_bytes, filename='welcome.png'))
