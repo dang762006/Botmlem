@@ -7,6 +7,8 @@ import io
 import aiohttp
 import asyncio
 from colorthief import ColorThief
+from flask import Flask
+from threading import Thread
 
 # --- Các hàm xử lý màu sắc (giữ nguyên) ---
 def rgb_to_hsl(r, g, b):
@@ -91,8 +93,11 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# --- Định nghĩa hàm tạo ảnh chào mừng (giữ nguyên logic, chỉ thêm cache avatar) ---
+# Sử dụng cache cho avatar để tránh tải lại nhiều lần trong thời gian ngắn (nếu có thể xảy ra)
+avatar_cache = {}
+CACHE_TTL = 300 # Thời gian sống của cache avatar là 300 giây (5 phút)
 
-# --- Định nghĩa hàm tạo ảnh chào mừng (giữ nguyên) ---
 async def create_welcome_image(member):
     font_path_preferred = "1FTV-Designer.otf"
 
@@ -132,21 +137,33 @@ async def create_welcome_image(member):
 
     draw = ImageDraw.Draw(img)
 
-    # --- Xử lý Avatar người dùng ---
+    # --- Xử lý Avatar người dùng (sử dụng cache) ---
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
-    print(f"DEBUG: Đang tải avatar từ URL: {avatar_url}")
     avatar_bytes = None
-    async with aiohttp.ClientSession() as session:
-        async with session.get(str(avatar_url)) as resp:
-            if resp.status != 200:
-                print(f"LỖI AVATAR: Không thể tải avatar cho {member.name}. Trạng thái: {resp.status}. Sử dụng avatar màu xám mặc định.")
-                default_avatar_size = 210
-                avatar_img = Image.new('RGBA', (default_avatar_size, default_avatar_size), color=(100, 100, 100, 255))
-            else:
-                avatar_bytes = await resp.read()
-                data = io.BytesIO(avatar_bytes)
-                avatar_img = Image.open(data).convert("RGBA")
-                print(f"DEBUG: Đã tải avatar cho {member.name}.")
+
+    # Kiểm tra cache
+    if avatar_url in avatar_cache and (asyncio.get_event_loop().time() - avatar_cache[avatar_url]['timestamp']) < CACHE_TTL:
+        avatar_bytes = avatar_cache[avatar_url]['data']
+        print(f"DEBUG: Lấy avatar từ cache cho {member.name}.")
+    else:
+        print(f"DEBUG: Đang tải avatar từ URL: {avatar_url}")
+        async with aiohttp.ClientSession() as session:
+            async with session.get(str(avatar_url)) as resp:
+                if resp.status != 200:
+                    print(f"LỖI AVATAR: Không thể tải avatar cho {member.name}. Trạng thái: {resp.status}. Sử dụng avatar màu xám mặc định.")
+                else:
+                    avatar_bytes = await resp.read()
+                    # Lưu vào cache
+                    avatar_cache[avatar_url] = {'data': avatar_bytes, 'timestamp': asyncio.get_event_loop().time()}
+                    print(f"DEBUG: Đã tải và lưu avatar vào cache cho {member.name}.")
+
+    if avatar_bytes:
+        data = io.BytesIO(avatar_bytes)
+        avatar_img = Image.open(data).convert("RGBA")
+    else:
+        default_avatar_size = 210
+        avatar_img = Image.new('RGBA', (default_avatar_size, default_avatar_size), color=(100, 100, 100, 255))
+
 
     avatar_size = 210
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
@@ -314,7 +331,7 @@ async def create_welcome_image(member):
 # --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
-    print(f'{bot.user} đã sẵn sàng!')
+    print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
     try:
         # Chỉ đồng bộ slash commands nếu biến môi trường SYNC_SLASH_COMMANDS được đặt là 'True'
@@ -333,7 +350,7 @@ async def on_member_join(member):
     channel = bot.get_channel(channel_id)
 
     if channel is None:
-        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {channel_id}.")
+        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {channel_id}. Vui lòng kiểm tra lại ID kênh.")
         return
 
     if not channel.permissions_for(member.guild.me).send_messages or \
@@ -342,12 +359,20 @@ async def on_member_join(member):
         return
 
     try:
+        # Giới hạn số lần tạo ảnh nếu có quá nhiều thành viên vào cùng lúc
+        # Discord.py đã có cơ chế xử lý giới hạn tốc độ nội bộ, nhưng đây là một biện pháp phòng ngừa thêm
+        # Nếu bot liên tục gặp lỗi 429 từ Discord, có thể cân nhắc thêm một độ trễ nhỏ ở đây.
+        # Ví dụ: await asyncio.sleep(1) # Đợi 1 giây trước khi tạo ảnh để giảm tải
+        
         image_bytes = await create_welcome_image(member)
         await channel.send(f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
                            file=discord.File(fp=image_bytes, filename='welcome.png'))
-        print("Đã gửi ảnh chào mừng thành công!")
+        print(f"Đã gửi ảnh chào mừng thành công cho {member.display_name}!")
+    except discord.errors.HTTPException as e:
+        print(f"LỖI HTTP DISCORD: Lỗi khi gửi ảnh chào mừng (có thể do giới hạn tốc độ): {e}")
+        await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}! (Có lỗi khi tạo ảnh chào mừng, xin lỗi!)")
     except Exception as e:
-        print(f"LỖỖI CHÀO MỪNG: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
+        print(f"LỖI CHÀO MỪNG KHÁC: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
         await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
 # --- Slash Command để TEST tạo ảnh welcome (giữ nguyên) ---
@@ -362,14 +387,12 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
         image_bytes = await create_welcome_image(member_to_test)
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
+        print(f"DEBUG: Đã gửi ảnh test chào mừng thành công cho {member_to_test.display_name}.")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
-        print(f"LỖỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
+        print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
 # PHẦN MỚI: Thêm lại Flask để Render có thể "ping" và thấy cổng mở
-from flask import Flask
-from threading import Thread
-
 app = Flask('')
 
 @app.route('/')
