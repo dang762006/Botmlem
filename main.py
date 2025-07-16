@@ -417,7 +417,7 @@ async def create_welcome_image(member):
 
     # Cố gắng tải font Arial.ttf cho ký hiệu. Nếu không có, dùng font mặc định của Pillow.
     try:
-        symbol_font = ImageFont.truetype("arial.ttf", symbol_font_size)
+        symbol_font = ImageFont.truetype("ARIAL.TTF", symbol_font_size)
         print("DEBUG: Đã sử dụng font Arial cho ký hiệu ✦.")
     except Exception as e:
         print(f"LỖI FONT KÝ HIỆU: Không thể tải Arial.ttf cho ký hiệu ✦ ({e}). Sử dụng font mặc định Pillow.")
