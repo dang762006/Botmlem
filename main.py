@@ -12,18 +12,21 @@ import threading
 from flask import Flask
 from colorthief import ColorThief
 
-# --- Khởi tạo Flask app (giữ nguyên) ---
+# --- Khởi tạo Flask app ---
 app = Flask(__name__)
 
 @app.route('/')
 def home():
+    """Endpoint chính cho Flask app. Có thể dùng làm Health Check nếu cần."""
     return "Bot is alive and healthy!"
 
 @app.route('/healthz')
 def health_check():
+    """Endpoint Health Check riêng biệt cho Render.com hoặc Replit."""
     return "OK", 200
 
 def send_self_ping():
+    """Gửi yêu cầu HTTP đến chính Flask server để giữ nó hoạt động."""
     port = int(os.environ.get("PORT", 10000))
     url = f"http://localhost:{port}/healthz"
     try:
@@ -41,6 +44,7 @@ def send_self_ping():
     )
 
 def run_flask():
+    """Chạy Flask app trong một luồng riêng biệt và bắt đầu tự ping."""
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
 
@@ -50,7 +54,7 @@ def run_flask():
     app.run(host='0.0.0.0', port=port,
             debug=False)
 
-# --- Cấu hình Bot Discord (giữ nguyên) ---
+# --- Cấu hình Bot Discord ---
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 intents = discord.Intents.default()
@@ -60,7 +64,7 @@ intents.presences = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- Các hàm xử lý màu sắc (giữ nguyên) ---
+# --- Các hàm xử lý màu sắc ---
 def rgb_to_hsl(r, g, b):
     r /= 255.0
     g /= 255.0
@@ -152,7 +156,7 @@ BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 LINE_LENGTH = 150
 LINE_THICKNESS = 3
-LINE_SHADOW_OFFSET = 2
+LINE_VERTICAL_OFFSET_FROM_NAME = 5 # Khoảng cách từ tên đến đường line
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
@@ -286,36 +290,14 @@ def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color,
     draw_obj.text((x + offset, y + offset), text, font=font, fill=shadow_color)
     draw_obj.text((x, y), text, font=font, fill=main_color)
 
-def _draw_decorative_line(draw_obj, img_width, line_y, dominant_color_rgb, name_text_y, name_font):
-    """Vẽ thanh line trang trí với hiệu ứng shadow/glow."""
-    line_color_rgb = adjust_color_brightness_saturation(
-        dominant_color_rgb, brightness_factor=1.15, saturation_factor=1.3
-    ) # Màu chính của line (sáng và rực rỡ)
-
-    line_shadow_color_rgb = adjust_color_brightness_saturation(
-        dominant_color_rgb,
-        brightness_factor=0.5, # Giảm độ sáng cho shadow
-        saturation_factor=1.2, # Tăng nhẹ độ bão hòa
-        clamp_min_l=0.1,
-        clamp_max_l=0.3
-    )
-    line_shadow_color = (*line_shadow_color_rgb, 200) # Thêm độ trong suốt nhẹ cho shadow
-
+def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb):
+    """Vẽ thanh line đơn giản (như kiểu cũ)."""
     line_x1 = img_width // 2 - LINE_LENGTH // 2
     line_x2 = img_width // 2 + LINE_LENGTH // 2
 
-    # Vẽ lớp shadow/glow bên dưới line chính
-    draw_obj.line(
-        [(line_x1 + LINE_SHADOW_OFFSET, line_y + LINE_SHADOW_OFFSET),
-         (line_x2 + LINE_SHADOW_OFFSET, line_y + LINE_SHADOW_OFFSET)],
-        fill=line_shadow_color,
-        width=LINE_THICKNESS + 2 # Shadow dày hơn một chút
-    )
-
-    # Vẽ line chính
     draw_obj.line(
         [(line_x1, line_y), (line_x2, line_y)],
-        fill=line_color_rgb, # Dùng RGB trực tiếp vì fill nhận (R, G, B) hoặc (R, G, B, A)
+        fill=line_color_rgb,
         width=LINE_THICKNESS
     )
 
@@ -387,11 +369,16 @@ async def create_welcome_image(member):
         stroke_color, (*shadow_color_name_rgb, 255), SHADOW_OFFSET
     )
 
-    # 8. Vẽ thanh line trang trí
+    # 8. Vẽ thanh line trang trí (đã quay lại kiểu cũ, gần tên hơn)
     name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
     name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
-    line_y = name_text_y + name_actual_height + 5
-    _draw_decorative_line(draw, img_width, line_y, dominant_color_from_avatar, name_text_y, font_name)
+    # Khoảng cách từ đáy của tên đến đường line
+    line_y = name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME
+
+    # Màu cho line chính, sử dụng màu stroke_color_rgb đã tính toán
+    line_color_rgb = stroke_color_rgb
+
+    _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb)
 
     # 9. Lưu ảnh và trả về
     img_byte_arr = io.BytesIO()
@@ -399,7 +386,7 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- Các tác vụ của bot (giữ nguyên, chỉ cần đảm bảo không có ký hiệu ✦ trong name của activity) ---
+# --- Các tác vụ của bot (giữ nguyên) ---
 @tasks.loop(minutes=1)
 async def activity_heartbeat():
     sleep_duration = random.randint(1 * 60, 3 * 60)
@@ -428,7 +415,7 @@ async def activity_heartbeat():
         print(
             f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
 
-# --- Tác vụ gửi tin nhắn định kỳ (giữ nguyên) ---
+# --- Tác vụ gửi tin nhắn định kỳ ---
 CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971
 
 RANDOM_MESSAGES = [
@@ -467,7 +454,7 @@ async def random_message_sender():
     else:
         print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}. Vui lòng kiểm tra lại ID hoặc bot chưa có quyền truy cập kênh đó.")
 
-# --- Các sự kiện của bot (giữ nguyên) ---
+# --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
     """Xử lý sự kiện khi bot sẵn sàng."""
@@ -527,7 +514,7 @@ async def on_member_join(member):
         await channel.send(
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# --- Slash Command để TEST tạo ảnh welcome (giữ nguyên) ---
+# --- Slash Command để TEST tạo ảnh welcome ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
 @app_commands.checks.has_permissions(administrator=True)
@@ -544,14 +531,14 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
-# --- Slash Command mới: /skibidi (giữ nguyên) ---
+# --- Slash Command mới: /skibidi ---
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
         " <a:cat2:1323314096040448145> *** https://dawnwibu.carrd.co *** <a:cat3:1323314218476372122>    "
     )
 
-# --- Khởi chạy Flask và Bot Discord (giữ nguyên) ---
+# --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
     """Hàm async để khởi động cả Flask và bot Discord."""
     flask_thread = threading.Thread(target=run_flask)
