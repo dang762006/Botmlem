@@ -399,26 +399,47 @@ async def create_welcome_image(member):
               font=font_name,
               fill=stroke_color)
 
-    # --- THÊM ĐƯỜNG KẺ TRANG TRÍ DƯỚI TÊN ---
-    line_color = stroke_color_rgb
-    line_thickness = 3
-    line_length = 150
+   # --- THÊM ĐƯỜNG KẺ TRANG TRÍ DƯỚI TÊN ---
+line_color = stroke_color_rgb
+line_thickness = 3
+line_length = 150
 
-    line_x1 = img_width // 2 - line_length // 2
-    line_x2 = img_width // 2 + line_length // 2
+line_x1 = img_width // 2 - line_length // 2
+line_x2 = img_width // 2 + line_length // 2
 
-    name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
-    name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
-    line_y = name_text_y + name_actual_height + 10
+name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
+name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
 
-    draw.line([(line_x1, line_y), (line_x2, line_y)],
-              fill=line_color,
-              width=line_thickness)
+# Điều chỉnh line_y để đường kẻ sát hơn với tên
+# Giảm giá trị cộng thêm từ 10 xuống 5 (hoặc một số nhỏ hơn tùy theo ý bạn)
+line_y = name_text_y + name_actual_height + 5 # Đã thay đổi từ 10 xuống 5
 
-    img_byte_arr = io.BytesIO()
-    img.save(img_byte_arr, format='PNG')
-    img_byte_arr.seek(0)
-    return img_byte_arr
+draw.line([(line_x1, line_y), (line_x2, line_y)],
+          fill=line_color,
+          width=line_thickness)
+
+# --- THÊM KÝ HIỆU ✦ VÀO ĐẦU VÀ CUỐI ĐƯỜNG KẺ ---
+symbol = "✦"
+symbol_font_size = 20 # Kích thước font cho ký hiệu (có thể điều chỉnh)
+symbol_font = ImageFont.truetype("1FTV-Designer.otf", symbol_font_size) # Sử dụng font của bạn cho ký hiệu
+
+# Tính toán vị trí cho ký hiệu
+# Ký hiệu ở đầu đường kẻ
+symbol_x_start = line_x1 - draw.textbbox((0, 0), symbol, font=symbol_font)[2] // 2
+symbol_y = line_y - symbol_font_size // 2 # Canh giữa theo chiều dọc với đường kẻ
+
+draw.text((symbol_x_start, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
+
+# Ký hiệu ở cuối đường kẻ
+symbol_x_end = line_x2 + draw.textbbox((0, 0), symbol, font=symbol_font)[2] // 2 - draw.textbbox((0,0),symbol,font=symbol_font)[2]
+symbol_y = line_y - symbol_font_size // 2
+
+draw.text((symbol_x_end, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
+
+img_byte_arr = io.BytesIO()
+img.save(img_byte_arr, format='PNG')
+img_byte_arr.seek(0)
+return img_byte_arr
 
 # --- Tác vụ thay đổi trạng thái bot ---
 @tasks.loop(minutes=1) # Tần suất vòng lặp chính (sẽ sleep bên trong)
@@ -434,9 +455,9 @@ async def activity_heartbeat():
         # Trạng thái "Đang xem Dawn_wibu phá đảo tựa game mới"
         discord.Activity(type=discord.ActivityType.watching,
                          name=f"Dawn_wibu phá đảo tựa game mới ✦ "),
-        # Trạng thái "Đang nghe RYUKYUVANIA" (đã phục hồi)
+        # Trạng thái "Đang nghe bài TRÌNH" (đã phục hồi)
         discord.Activity(type=discord.ActivityType.listening,
-                         name=f"Bài RYUKYUVANIA ✦ "),
+                         name=f"Bài TRÌNH ✦ "),
         # Thêm trạng thái Đang chơi game
         discord.Activity(type=discord.ActivityType.playing,
                          name=f"Minecraft cùng Anh Em ✦ "),
@@ -466,7 +487,7 @@ RANDOM_MESSAGES = [
     "Đừng quên thư giãn nhé! 😌",
     "Tôi là bot thông minh nhất quả đất! 💡",
     "Ngày mới năng động nha mọi người! 🚀",
-    "Có câu hỏi nào khó tôi giải đáp không? 🧠"
+    "Có câu hỏi khó nào cần tôi giải đáp không? 🧠"
 ]
 
 @tasks.loop(minutes=1) # Tần suất vòng lặp chính để kiểm tra và gửi tin nhắn
