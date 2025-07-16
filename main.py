@@ -590,7 +590,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145> ✦***https://dawnwibu.carrd.co***✦ <a:cat3:1323314218476372122>   "
+        " <a:cat2:1323314096040448145> ✦*** https://dawnwibu.carrd.co ***✦ <a:cat3:1323314218476372122>   "
     )
 
 
