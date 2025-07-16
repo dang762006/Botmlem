@@ -161,6 +161,8 @@ async def create_welcome_image(member):
             f"LỖI FONT: Không thể tải font '{font_path_preferred}'. Sử dụng font mặc định với kích thước cố định. Chi tiết: {e}"
         )
         try:
+            # Dù arial.ttf có thể không có ký hiệu, nó vẫn là một lựa chọn tốt hơn
+            # cho văn bản thông thường nếu font chính không tải được.
             font_welcome = ImageFont.truetype("arial.ttf", 60)
             font_name = ImageFont.truetype("arial.ttf", 34)
             print(
@@ -173,7 +175,7 @@ async def create_welcome_image(member):
                 "DEBUG: Đã sử dụng font mặc định của Pillow và ép kích thước (thay thế cho 1FTV-Designer.otf)."
             )
 
-    shadow_offset = 3
+    shadow_offset = 3 # Offset cho hiệu ứng đổ bóng chữ
 
     background_image_path = "welcome.png"
     try:
@@ -247,6 +249,7 @@ async def create_welcome_image(member):
 
     _, _, initial_l = rgb_to_hsl(*dominant_color_from_avatar)
 
+    # Điều chỉnh màu viền và line chính (sáng và rực rỡ hơn)
     if initial_l < 0.35:
         stroke_color_rgb = adjust_color_brightness_saturation(
             dominant_color_from_avatar,
@@ -266,7 +269,7 @@ async def create_welcome_image(member):
     blur_bg_x = avatar_x
     blur_bg_y = avatar_y
 
-    blur_color_with_alpha = (*stroke_color_rgb, 128)
+    blur_color_with_alpha = (*stroke_color_rgb, 128) # Màu có độ trong suốt
 
     blur_bg_raw_circle = Image.new('RGBA', (blur_bg_size, blur_bg_size),
                                     (0, 0, 0, 0))
@@ -394,10 +397,13 @@ async def create_welcome_image(member):
               font=font_name,
               fill=stroke_color)
 
-    # --- THÊM ĐƯỜNG KẺ TRANG TRÍ DƯỚI TÊN ---
-    line_color = stroke_color_rgb
-    line_thickness = 3
-    line_length = 150
+    # --- CẬP NHẬT: THANH LINE TRANG TRÍ MỚI ---
+    # Loai bo ky hieu ✦
+    # Them hieu ung shadow/glow don gian
+
+    line_color = stroke_color_rgb # Màu sắc chính của line
+    line_thickness = 3 # Độ dày của line
+    line_length = 150 # Độ dài của line
 
     line_x1 = img_width // 2 - line_length // 2
     line_x2 = img_width // 2 + line_length // 2
@@ -405,35 +411,34 @@ async def create_welcome_image(member):
     name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
     name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
 
-    line_y = name_text_y + name_actual_height + 5
+    line_y = name_text_y + name_actual_height + 5 # Vị trí Y của line chính
 
-    draw.line([(line_x1, line_y), (line_x2, line_y)],
-              fill=line_color,
-              width=line_thickness)
+    # Màu cho hiệu ứng shadow/glow của line
+    line_shadow_color_rgb = adjust_color_brightness_saturation(
+        dominant_color_from_avatar,
+        brightness_factor=0.5, # Giảm độ sáng
+        saturation_factor=1.2, # Tăng nhẹ độ bão hòa
+        clamp_min_l=0.1,
+        clamp_max_l=0.3
+    )
+    line_shadow_color = (*line_shadow_color_rgb, 200) # Thêm độ trong suốt nhẹ
 
-    # --- THÊM KÝ HIỆU ✦ VÀO ĐẦU VÀ CUỐI ĐƯỜNG KẺ (ĐÃ CẬP NHẬT FONT FALLBACK) ---
-    symbol = "✦"
-    symbol_font_size = 20
+    shadow_offset_line = 2 # Offset cho hiệu ứng đổ bóng/glow của line
 
-    # Cố gắng tải font Arial.ttf cho ký hiệu. Nếu không có, dùng font mặc định của Pillow.
-    try:
-        symbol_font = ImageFont.truetype("ARIAL.TTF", symbol_font_size)
-        print("DEBUG: Đã sử dụng font Arial cho ký hiệu ✦.")
-    except Exception as e:
-        print(f"LỖI FONT KÝ HIỆU: Không thể tải Arial.ttf cho ký hiệu ✦ ({e}). Sử dụng font mặc định Pillow.")
-        symbol_font = ImageFont.load_default().font_variant(size=symbol_font_size)
+    # Vẽ lớp shadow/glow bên dưới line chính
+    draw.line(
+        [(line_x1 + shadow_offset_line, line_y + shadow_offset_line),
+         (line_x2 + shadow_offset_line, line_y + shadow_offset_line)],
+        fill=line_shadow_color,
+        width=line_thickness + 2 # Làm cho shadow dày hơn một chút
+    )
 
-
-    symbol_width = draw.textbbox((0, 0), symbol, font=symbol_font)[2]
-    symbol_x_start = line_x1 - symbol_width - 5
-    symbol_y = line_y - symbol_font_size // 2 + 2
-
-    draw.text((symbol_x_start, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
-
-    symbol_x_end = line_x2 + 5
-    symbol_y = line_y - symbol_font_size // 2 + 2
-
-    draw.text((symbol_x_end, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
+    # Vẽ line chính
+    draw.line(
+        [(line_x1, line_y), (line_x2, line_y)],
+        fill=line_color,
+        width=line_thickness
+    )
 
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='PNG')
@@ -451,11 +456,11 @@ async def activity_heartbeat():
 
     activities = [
         discord.Activity(type=discord.ActivityType.watching,
-                         name=f"Dawn_wibu phá đảo tựa game mới ✦ "),
+                         name=f"Dawn_wibu phá đảo tựa game mới "),
         discord.Activity(type=discord.ActivityType.listening,
-                         name=f"Bài TRÌNH ✦ "),
+                         name=f"Bài TRÌNH "),
         discord.Activity(type=discord.ActivityType.playing,
-                         name=f"Minecraft cùng Anh Em ✦ "),
+                         name=f"Minecraft cùng Anh Em "),
     ]
 
     try:
@@ -589,7 +594,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145> ✦*** https://dawnwibu.carrd.co ***✦ <a:cat3:1323314218476372122>    "
+        " <a:cat2:1323314096040448145> *** https://dawnwibu.carrd.co *** <a:cat3:1323314218476372122>    "
     )
 
 # --- Khởi chạy Flask và Bot Discord ---
