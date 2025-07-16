@@ -399,47 +399,53 @@ async def create_welcome_image(member):
               font=font_name,
               fill=stroke_color)
 
-   # --- THÊM ĐƯỜNG KẺ TRANG TRÍ DƯỚI TÊN ---
-line_color = stroke_color_rgb
-line_thickness = 3
-line_length = 150
+    # --- THÊM ĐƯỜNG KẺ TRANG TRÍ DƯỚI TÊN ---
+    # PHẦN NÀY ĐÃ ĐƯỢC CHUYỂN VÀO BÊN TRONG HÀM create_welcome_image
+    line_color = stroke_color_rgb
+    line_thickness = 3
+    line_length = 150
 
-line_x1 = img_width // 2 - line_length // 2
-line_x2 = img_width // 2 + line_length // 2
+    line_x1 = img_width // 2 - line_length // 2
+    line_x2 = img_width // 2 + line_length // 2
 
-name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
-name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
+    name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
+    name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
 
-# Điều chỉnh line_y để đường kẻ sát hơn với tên
-# Giảm giá trị cộng thêm từ 10 xuống 5 (hoặc một số nhỏ hơn tùy theo ý bạn)
-line_y = name_text_y + name_actual_height + 5 # Đã thay đổi từ 10 xuống 5
+    # Điều chỉnh line_y để đường kẻ sát hơn với tên
+    # Giảm giá trị cộng thêm từ 10 xuống 5 (hoặc một số nhỏ hơn tùy theo ý bạn)
+    line_y = name_text_y + name_actual_height + 5 # Đã thay đổi từ 10 xuống 5
 
-draw.line([(line_x1, line_y), (line_x2, line_y)],
-          fill=line_color,
-          width=line_thickness)
+    draw.line([(line_x1, line_y), (line_x2, line_y)],
+              fill=line_color,
+              width=line_thickness)
 
-# --- THÊM KÝ HIỆU ✦ VÀO ĐẦU VÀ CUỐI ĐƯỜNG KẺ ---
-symbol = "✦"
-symbol_font_size = 20 # Kích thước font cho ký hiệu (có thể điều chỉnh)
-symbol_font = ImageFont.truetype("1FTV-Designer.otf", symbol_font_size) # Sử dụng font của bạn cho ký hiệu
+    # --- THÊM KÝ HIỆU ✦ VÀO ĐẦU VÀ CUỐI ĐƯỜNG KẺ ---
+    symbol = "✦"
+    symbol_font_size = 20 # Kích thước font cho ký hiệu (có thể điều chỉnh)
+    # Đảm bảo "1FTV-Designer.otf" có sẵn hoặc bạn có cơ chế fallback phù hợp
+    symbol_font = ImageFont.truetype("1FTV-Designer.otf", symbol_font_size) # Sử dụng font của bạn cho ký hiệu
 
-# Tính toán vị trí cho ký hiệu
-# Ký hiệu ở đầu đường kẻ
-symbol_x_start = line_x1 - draw.textbbox((0, 0), symbol, font=symbol_font)[2] // 2
-symbol_y = line_y - symbol_font_size // 2 # Canh giữa theo chiều dọc với đường kẻ
+    # Tính toán vị trí cho ký hiệu
+    # Ký hiệu ở đầu đường kẻ
+    # Sử dụng textbbox để tính toán chiều rộng ký hiệu chính xác
+    symbol_width = draw.textbbox((0, 0), symbol, font=symbol_font)[2]
+    symbol_x_start = line_x1 - symbol_width - 5 # Điều chỉnh -5 để có khoảng cách nhỏ giữa ký hiệu và đường kẻ
+    symbol_y = line_y - symbol_font_size // 2 + 2 # Canh giữa theo chiều dọc với đường kẻ, điều chỉnh +2 để tinh chỉnh
 
-draw.text((symbol_x_start, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
+    draw.text((symbol_x_start, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
 
-# Ký hiệu ở cuối đường kẻ
-symbol_x_end = line_x2 + draw.textbbox((0, 0), symbol, font=symbol_font)[2] // 2 - draw.textbbox((0,0),symbol,font=symbol_font)[2]
-symbol_y = line_y - symbol_font_size // 2
+    # Ký hiệu ở cuối đường kẻ
+    symbol_x_end = line_x2 + 5 # Điều chỉnh +5 để có khoảng cách nhỏ
+    symbol_y = line_y - symbol_font_size // 2 + 2 # Giữ đồng nhất với symbol_y_start
 
-draw.text((symbol_x_end, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
+    draw.text((symbol_x_end, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
+    # KẾT THÚC PHẦN CODE ĐÃ ĐƯỢC CHUYỂN VÀO BÊN TRONG HÀM
+    # ---
 
-img_byte_arr = io.BytesIO()
-img.save(img_byte_arr, format='PNG')
-img_byte_arr.seek(0)
-return img_byte_arr
+    img_byte_arr = io.BytesIO()
+    img.save(img_byte_arr, format='PNG')
+    img_byte_arr.seek(0)
+    return img_byte_arr
 
 # --- Tác vụ thay đổi trạng thái bot ---
 @tasks.loop(minutes=1) # Tần suất vòng lặp chính (sẽ sleep bên trong)
@@ -611,7 +617,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145> ✦*** https://dawnwibu.carrd.co ***✦ <a:cat3:1323314218476372122>   "
+        " <a:cat2:1323314096040448145> ✦*** https://dawnwibu.carrd.co ***✦ <a:cat3:1323314218476372122>    "
     )
 
 
