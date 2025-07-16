@@ -9,8 +9,8 @@ import asyncio
 import random
 import requests
 import threading
-from flask import Flask # Đảm bảo dòng này đã được import
-from colorthief import ColorThief # Đảm bảo dòng này đã được import nếu bạn sử dụng nó
+from flask import Flask
+from colorthief import ColorThief
 
 # --- Khởi tạo Flask app ---
 app = Flask(__name__)
@@ -23,12 +23,12 @@ def home():
 @app.route('/healthz')
 def health_check():
     """Endpoint Health Check riêng biệt cho Render.com hoặc Replit."""
-    return "OK", 200 # Trả về mã trạng thái 200 (OK)
+    return "OK", 200
 
 def send_self_ping():
     """Gửi yêu cầu HTTP đến chính Flask server để giữ nó hoạt động."""
     port = int(os.environ.get("PORT", 10000))
-    url = f"http://localhost:{port}/healthz" # Ping endpoint Health Check
+    url = f"http://localhost:{port}/healthz"
     try:
         response = requests.get(url, timeout=5)
         print(
@@ -37,8 +37,7 @@ def send_self_ping():
     except requests.exceptions.RequestException as e:
         print(f"LỖI SELF-PING: Không thể tự ping Flask server: {e}")
 
-    # Lập lịch cho lần ping tiếp theo với thời gian ngẫu nhiên 3-10 phút
-    next_ping_interval = random.randint(3 * 60, 10 * 60) # Tính bằng giây
+    next_ping_interval = random.randint(3 * 60, 10 * 60)
     threading.Timer(next_ping_interval, send_self_ping).start()
     print(
         f"DEBUG: Lập lịch tự ping tiếp theo sau {next_ping_interval // 60} phút."
@@ -49,26 +48,23 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
 
-    # Bắt đầu tự ping sau một thời gian ngắn khi Flask đã khởi động
-    # Ví dụ: bắt đầu sau 30 giây để server có thời gian khởi động hoàn chỉnh
     threading.Timer(30, send_self_ping).start()
     print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
 
     app.run(host='0.0.0.0', port=port,
-            debug=False) # Tắt debug mode trong production
+            debug=False)
 
 # --- Cấu hình Bot Discord ---
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 intents = discord.Intents.default()
-# Cần bật để Discord gửi sự kiện on_member_join và để bot có thể xem Presence (trạng thái)
 intents.members = True
-intents.message_content = True # Để xử lý tin nhắn nếu có (hiện tại không dùng)
-intents.presences = True # RẤT QUAN TRỌNG ĐỂ HIỂN THỊ TRẠNG THÁI
+intents.message_content = True
+intents.presences = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- Các hàm xử lý màu sắc và tạo ảnh welcome (GIỮ NGUYÊN) ---
+# --- Các hàm xử lý màu sắc và tạo ảnh welcome ---
 def rgb_to_hsl(r, g, b):
     r /= 255.0
     g /= 255.0
@@ -99,7 +95,6 @@ def rgb_to_hsl(r, g, b):
     return h, s, l
 
 def hsl_to_rgb(h, s, l):
-
     def hsl_to_rgb_component(p, q, t):
         if t < 0: t += 1
         if t > 1: t -= 1
@@ -149,7 +144,7 @@ async def get_dominant_color(image_bytes):
         return None
 
 avatar_cache = {}
-CACHE_TTL = 300 # Thời gian sống của cache avatar là 300 giây (5 phút)
+CACHE_TTL = 300
 
 async def create_welcome_image(member):
     font_path_preferred = "1FTV-Designer.otf"
@@ -400,7 +395,6 @@ async def create_welcome_image(member):
               fill=stroke_color)
 
     # --- THÊM ĐƯỜNG KẺ TRANG TRÍ DƯỚI TÊN ---
-    # PHẦN NÀY ĐÃ ĐƯỢC CHUYỂN VÀO BÊN TRONG HÀM create_welcome_image
     line_color = stroke_color_rgb
     line_thickness = 3
     line_length = 150
@@ -411,36 +405,35 @@ async def create_welcome_image(member):
     name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
     name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
 
-    # Điều chỉnh line_y để đường kẻ sát hơn với tên
-    # Giảm giá trị cộng thêm từ 10 xuống 5 (hoặc một số nhỏ hơn tùy theo ý bạn)
-    line_y = name_text_y + name_actual_height + 5 # Đã thay đổi từ 10 xuống 5
+    line_y = name_text_y + name_actual_height + 5
 
     draw.line([(line_x1, line_y), (line_x2, line_y)],
               fill=line_color,
               width=line_thickness)
 
-    # --- THÊM KÝ HIỆU ✦ VÀO ĐẦU VÀ CUỐI ĐƯỜNG KẺ ---
+    # --- THÊM KÝ HIỆU ✦ VÀO ĐẦU VÀ CUỐI ĐƯỜNG KẺ (ĐÃ CẬP NHẬT FONT FALLBACK) ---
     symbol = "✦"
-    symbol_font_size = 20 # Kích thước font cho ký hiệu (có thể điều chỉnh)
-    # Đảm bảo "1FTV-Designer.otf" có sẵn hoặc bạn có cơ chế fallback phù hợp
-    symbol_font = ImageFont.truetype("1FTV-Designer.otf", symbol_font_size) # Sử dụng font của bạn cho ký hiệu
+    symbol_font_size = 20
 
-    # Tính toán vị trí cho ký hiệu
-    # Ký hiệu ở đầu đường kẻ
-    # Sử dụng textbbox để tính toán chiều rộng ký hiệu chính xác
+    # Cố gắng tải font Arial.ttf cho ký hiệu. Nếu không có, dùng font mặc định của Pillow.
+    try:
+        symbol_font = ImageFont.truetype("arial.ttf", symbol_font_size)
+        print("DEBUG: Đã sử dụng font Arial cho ký hiệu ✦.")
+    except Exception as e:
+        print(f"LỖI FONT KÝ HIỆU: Không thể tải Arial.ttf cho ký hiệu ✦ ({e}). Sử dụng font mặc định Pillow.")
+        symbol_font = ImageFont.load_default().font_variant(size=symbol_font_size)
+
+
     symbol_width = draw.textbbox((0, 0), symbol, font=symbol_font)[2]
-    symbol_x_start = line_x1 - symbol_width - 5 # Điều chỉnh -5 để có khoảng cách nhỏ giữa ký hiệu và đường kẻ
-    symbol_y = line_y - symbol_font_size // 2 + 2 # Canh giữa theo chiều dọc với đường kẻ, điều chỉnh +2 để tinh chỉnh
+    symbol_x_start = line_x1 - symbol_width - 5
+    symbol_y = line_y - symbol_font_size // 2 + 2
 
     draw.text((symbol_x_start, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
 
-    # Ký hiệu ở cuối đường kẻ
-    symbol_x_end = line_x2 + 5 # Điều chỉnh +5 để có khoảng cách nhỏ
-    symbol_y = line_y - symbol_font_size // 2 + 2 # Giữ đồng nhất với symbol_y_start
+    symbol_x_end = line_x2 + 5
+    symbol_y = line_y - symbol_font_size // 2 + 2
 
     draw.text((symbol_x_end, symbol_y), symbol, font=symbol_font, fill=line_color, stroke_fill=stroke_color_rgb, stroke_width=stroke_thickness)
-    # KẾT THÚC PHẦN CODE ĐÃ ĐƯỢC CHUYỂN VÀO BÊN TRONG HÀM
-    # ---
 
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='PNG')
@@ -448,23 +441,19 @@ async def create_welcome_image(member):
     return img_byte_arr
 
 # --- Tác vụ thay đổi trạng thái bot ---
-@tasks.loop(minutes=1) # Tần suất vòng lặp chính (sẽ sleep bên trong)
+@tasks.loop(minutes=1)
 async def activity_heartbeat():
-    # Ngủ ngẫu nhiên từ 1 đến 3 phút trước khi thay đổi trạng thái
-    sleep_duration = random.randint(1 * 60, 3 * 60) # Tính bằng giây
+    sleep_duration = random.randint(1 * 60, 3 * 60)
     print(
         f"DEBUG: Tác vụ activity_heartbeat đang ngủ {sleep_duration // 60} phút để chuẩn bị cập nhật trạng thái..."
     )
     await asyncio.sleep(sleep_duration)
 
     activities = [
-        # Trạng thái "Đang xem Dawn_wibu phá đảo tựa game mới"
         discord.Activity(type=discord.ActivityType.watching,
                          name=f"Dawn_wibu phá đảo tựa game mới ✦ "),
-        # Trạng thái "Đang nghe bài TRÌNH" (đã phục hồi)
         discord.Activity(type=discord.ActivityType.listening,
                          name=f"Bài TRÌNH ✦ "),
-        # Thêm trạng thái Đang chơi game
         discord.Activity(type=discord.ActivityType.playing,
                          name=f"Minecraft cùng Anh Em ✦ "),
     ]
@@ -481,10 +470,8 @@ async def activity_heartbeat():
             f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
 
 # --- Tác vụ gửi tin nhắn định kỳ ---
-# Định nghĩa ID kênh bạn muốn gửi tin nhắn tới
-CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971 # <-- Đảm bảo đây là ID kênh chính xác
+CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971
 
-# Danh sách các tin nhắn bot có thể gửi ngẫu nhiên
 RANDOM_MESSAGES = [
     "Chào mọi người! ✨ Chúc một ngày tốt lành!",
     "Đang online đây! Có ai cần gì không? 🤖",
@@ -496,21 +483,15 @@ RANDOM_MESSAGES = [
     "Có câu hỏi khó nào cần tôi giải đáp không? 🧠"
 ]
 
-@tasks.loop(minutes=1) # Tần suất vòng lặp chính để kiểm tra và gửi tin nhắn
+@tasks.loop(minutes=1)
 async def random_message_sender():
-    # Chọn một khoảng thời gian ngẫu nhiên từ 2 đến 5 phút (tính bằng giây)
     send_interval = random.randint(2 * 60, 5 * 60)
-
-    # In ra thông báo debug
     print(f"DEBUG: Tác vụ random_message_sender sẽ gửi tin nhắn sau {send_interval // 60} phút.")
-
-    # Chờ đợi khoảng thời gian đã chọn
     await asyncio.sleep(send_interval)
 
     channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
     if channel:
-        if isinstance(channel, discord.TextChannel): # Đảm bảo đây là kênh văn bản
-            # Kiểm tra quyền của bot trong kênh đó
+        if isinstance(channel, discord.TextChannel):
             if channel.permissions_for(channel.guild.me).send_messages:
                 message_to_send = random.choice(RANDOM_MESSAGES)
                 try:
@@ -534,7 +515,6 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
     try:
-        # Đồng bộ slash commands
         synced = await bot.tree.sync()
         print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
     except Exception as e:
@@ -542,22 +522,17 @@ async def on_ready():
             f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
         )
 
-    # BẮT ĐẦU TÁC VỤ THAY ĐỔI TRẠNG THÁI
     if not activity_heartbeat.is_running():
         activity_heartbeat.start()
         print("DEBUG: Đã bắt đầu tác vụ thay đổi trạng thái để giữ hoạt động.")
 
-    # BẮT ĐẦU TÁC VỤ GỬI TIN NHẮN ĐỊNH KỲ MỚI
     if not random_message_sender.is_running():
         random_message_sender.start()
         print("DEBUG: Đã bắt đầu tác vụ gửi tin nhắn định kỳ.")
 
-
 @bot.event
 async def on_member_join(member):
-    # ID kênh chào mừng, cần đảm bảo là đúng ID của kênh trong Discord của bạn
-    # Ví dụ: channel_id = 123456789012345678 (Bạn cần thay thế bằng ID kênh THỰC TẾ)
-    channel_id = 1322848542758277202 # ID kênh chat bạn đã cung cấp
+    channel_id = 1322848542758277202
 
     channel = bot.get_channel(channel_id)
 
@@ -567,7 +542,6 @@ async def on_member_join(member):
         )
         return
 
-    # Kiểm tra quyền của bot trong kênh đó
     if not channel.permissions_for(member.guild.me).send_messages or \
        not channel.permissions_for(member.guild.me).attach_files:
         print(
@@ -578,7 +552,6 @@ async def on_member_join(member):
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member.display_name}...")
         image_bytes = await create_welcome_image(member)
-        # Gửi tin nhắn chào mừng và đính kèm ảnh
         await channel.send(
             f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
             file=discord.File(fp=image_bytes, filename='welcome.png'))
@@ -595,14 +568,13 @@ async def on_member_join(member):
         await channel.send(
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-
-# --- Slash Command để TEST tạo ảnh welcome (GIỮ LẠI ĐỂ DỄ DÀNG TEST) ---
+# --- Slash Command để TEST tạo ảnh welcome ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True) # Chỉ admin mới dùng được
+@app_commands.checks.has_permissions(administrator=True)
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
-    await interaction.response.defer(thinking=True) # Để bot có thời gian xử lý
+    await interaction.response.defer(thinking=True)
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
@@ -620,12 +592,11 @@ async def skibidi(interaction: discord.Interaction):
         " <a:cat2:1323314096040448145> ✦*** https://dawnwibu.carrd.co ***✦ <a:cat3:1323314218476372122>    "
     )
 
-
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
     """Hàm async để khởi động cả Flask và bot Discord."""
     flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True # Đảm bảo luồng Flask sẽ kết thúc khi luồng chính kết thúc
+    flask_thread.daemon = True
     flask_thread.start()
 
     print(
@@ -650,7 +621,6 @@ async def start_bot_and_flask():
             raise
     except Exception as e:
         print(f"Một lỗi không xác định đã xảy ra: {e}")
-
 
 if __name__ == '__main__':
     if not TOKEN:
