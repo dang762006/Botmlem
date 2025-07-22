@@ -151,7 +151,7 @@ FONT_PREFERRED_PATH = "1FTV-Designer.otf"
 WELCOME_FONT_SIZE = 60
 NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
-SHADOW_OFFSET = 3
+# SHADOW_OFFSET = 3 # Giờ sẽ tính toán động
 BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 LINE_LENGTH = 150
@@ -285,9 +285,9 @@ def _draw_circular_avatar_and_stroke(img, avatar_img, avatar_x, avatar_y, avatar
 
     img.paste(avatar_layer, (avatar_x, avatar_y), final_alpha_mask)
 
-def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color, offset):
-    """Vẽ văn bản với hiệu ứng đổ bóng đơn giản."""
-    draw_obj.text((x + offset, y + offset), text, font=font, fill=shadow_color)
+def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color, offset_x, offset_y):
+    """Vẽ văn bản với hiệu ứng đổ bóng đơn giản với offset tùy chỉnh."""
+    draw_obj.text((x + offset_x, y + offset_y), text, font=font, fill=shadow_color)
     draw_obj.text((x, y), text, font=font, fill=main_color)
 
 def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb):
@@ -310,6 +310,10 @@ async def create_welcome_image(member):
     img_width, img_height = img.size
     draw = ImageDraw.Draw(img)
 
+    # Tính toán offset bóng đổ dựa trên kích thước ảnh (khoảng 0.5% của chiều rộng/chiều cao)
+    shadow_offset_x = int(img_width * 0.005)  # 0.5% của chiều rộng
+    shadow_offset_y = int(img_height * 0.005) # 0.5% của chiều cao
+
     # 3. Lấy và xử lý Avatar
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     avatar_img, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
@@ -322,14 +326,15 @@ async def create_welcome_image(member):
         dominant_color_from_avatar = (0, 252, 233) # Default Cyan
 
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo
+    # Tăng saturation_factor lên 1.15 (tăng 15%)
     _, _, initial_l = rgb_to_hsl(*dominant_color_from_avatar)
     if initial_l < 0.35:
         stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.8, clamp_min_l=0.5
+            dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.95, clamp_min_l=0.5 # 1.8 * 1.15 = 2.07
         )
     else:
         stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar, brightness_factor=1.15, saturation_factor=1.3
+            dominant_color_from_avatar, brightness_factor=1.15, saturation_factor=1.495 # 1.3 * 1.15 = 1.495
         )
     stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên
 
@@ -351,7 +356,7 @@ async def create_welcome_image(member):
     )
     _draw_text_with_shadow(
         draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
-        (255, 255, 255), (*shadow_color_welcome_rgb, 255), SHADOW_OFFSET
+        (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y # Dùng offset mới
     )
 
     # 7. Vẽ tên người dùng
@@ -366,7 +371,7 @@ async def create_welcome_image(member):
     )
     _draw_text_with_shadow(
         draw, name_text, font_name, name_text_x, name_text_y,
-        stroke_color, (*shadow_color_name_rgb, 255), SHADOW_OFFSET
+        stroke_color, (*shadow_color_name_rgb, 255), shadow_offset_x, shadow_offset_y # Dùng offset mới
     )
 
     # 8. Vẽ thanh line trang trí (đã quay lại kiểu cũ, gần tên hơn)
