@@ -154,7 +154,7 @@ NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
 BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
-LINE_THICKNESS = 2 # CẬP NHẬT ĐỘ DÀY LINE
+LINE_THICKNESS = 2.8 # CẬP NHẬT ĐỘ DÀY LINE
 LINE_VERTICAL_OFFSET_FROM_NAME = 13 # Khoảng cách từ tên đến đường line
 LINE_LENGTH_FACTOR = 0.75 # Tỷ lệ độ dài của line so với độ dài của tên (80%)
 
