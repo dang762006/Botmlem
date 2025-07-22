@@ -48,8 +48,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
 
-    # Bắt đầu tự ping ngay lập tức khi Flask server chạy
-    threading.Timer(10, send_self_ping).start() # Ping sau 10 giây để đảm bảo server khởi động
+    threading.Timer(10, send_self_ping).start()
     print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
 
     app.run(host='0.0.0.0', port=port,
@@ -148,7 +147,8 @@ avatar_cache = {}
 CACHE_TTL = 300
 
 # --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
-FONT_PREFERRED_PATH = "Quivira.otf" # Đã thay đổi font ở đây!
+FONT_MAIN_PATH = "1FTV-Designer.otf" # Font chính cho chữ
+FONT_SYMBOL_PATH = "Quivira.otf"     # Font cho các ký tự đặc biệt/biểu tượng
 WELCOME_FONT_SIZE = 60
 NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
@@ -156,30 +156,40 @@ BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 LINE_LENGTH = 150
 LINE_THICKNESS = 3
-LINE_VERTICAL_OFFSET_FROM_NAME = 5 # Khoảng cách từ tên đến đường line
+LINE_VERTICAL_OFFSET_FROM_NAME = 15 # Đã tăng khoảng cách này lên
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
-def _load_fonts(preferred_path):
-    """Tải font cho văn bản, có fallback."""
-    font_welcome, font_name = None, None
+def _load_fonts(main_path, symbol_path):
+    """Tải font chính và font biểu tượng, có fallback."""
+    font_welcome, font_name, font_symbol = None, None, None
+
+    # Tải font chính
     try:
-        font_welcome = ImageFont.truetype(preferred_path, WELCOME_FONT_SIZE)
-        font_name = ImageFont.truetype(preferred_path, NAME_FONT_SIZE)
-        print(f"DEBUG: Đã tải font thành công: {preferred_path}")
+        font_welcome = ImageFont.truetype(main_path, WELCOME_FONT_SIZE)
+        font_name = ImageFont.truetype(main_path, NAME_FONT_SIZE)
+        print(f"DEBUG: Đã tải font chính thành công: {main_path}")
     except Exception as e:
-        print(
-            f"LỖI FONT: Không thể tải font '{preferred_path}'. Sử dụng font Arial hoặc mặc định. Chi tiết: {e}"
-        )
+        print(f"LỖI FONT: Không thể tải font chính '{main_path}'. Sử dụng Arial. Chi tiết: {e}")
         try:
             font_welcome = ImageFont.truetype("arial.ttf", WELCOME_FONT_SIZE)
             font_name = ImageFont.truetype("arial.ttf", NAME_FONT_SIZE)
-            print("DEBUG: Đã sử dụng font Arial.ttf.")
+            print("DEBUG: Đã sử dụng font Arial.ttf cho văn bản chính.")
         except Exception:
             font_welcome = ImageFont.load_default().font_variant(size=WELCOME_FONT_SIZE)
             font_name = ImageFont.load_default().font_variant(size=NAME_FONT_SIZE)
-            print("DEBUG: Đã sử dụng font mặc định của Pillow.")
-    return font_welcome, font_name
+            print("DEBUG: Đã sử dụng font mặc định của Pillow cho văn bản chính.")
+    
+    # Tải font biểu tượng
+    try:
+        font_symbol = ImageFont.truetype(symbol_path, NAME_FONT_SIZE) # Kích thước tương tự font tên
+        print(f"DEBUG: Đã tải font biểu tượng thành công: {symbol_path}")
+    except Exception as e:
+        print(f"LỖI FONT: Không thể tải font biểu tượng '{symbol_path}'. Sử dụng font mặc định cho biểu tượng. Chi tiết: {e}")
+        font_symbol = ImageFont.load_default().font_variant(size=NAME_FONT_SIZE)
+        print("DEBUG: Đã sử dụng font mặc định của Pillow cho biểu tượng.")
+        
+    return font_welcome, font_name, font_symbol
 
 def _load_background_image(path, default_dims):
     """Tải ảnh nền, hoặc tạo ảnh nền mặc định nếu không tìm thấy."""
@@ -301,55 +311,61 @@ def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb):
         width=LINE_THICKNESS
     )
 
-def replace_unsupported_chars(text, font, replacement_char='✦'):
-    """
-    Kiểm tra và thay thế các ký tự không được font hỗ trợ bằng ký tự thay thế.
-    Với font Quivira.otf, ký tự '✦' (U+2726) có thể sẽ được hỗ trợ trực tiếp.
-    Tuy nhiên, hàm này vẫn hữu ích để lọc các emoji màu hoặc các ký tự đặc biệt khác
-    mà font có thể không hỗ trợ.
-    """
-    cleaned_text = []
-    # Các khối Unicode của Emoji và một số ký hiệu đặc biệt
-    emoji_ranges = [
-        (0x1F600, 0x1F64F), # Emoticons
-        (0x1F300, 0x1F5FF), # Miscellaneous Symbols and Pictographs
-        (0x1F680, 0x1F6FF), # Transport & Map Symbols
-        (0x2600, 0x26FF),   # Miscellaneous Symbols
-        (0x2700, 0x27BF),   # Dingbats (chứa ✦ U+2726)
-        (0xFE00, 0xFE0F),   # Variation Selectors
-        (0x1F900, 0x1F9FF), # Supplemental Symbols and Pictographs
-        (0x1FA70, 0x1FAFF), # Symbols and Pictographs Extended-A
-    ]
-    
-    def is_emoji_or_unlikely_supported(char):
-        code = ord(char)
-        # Nếu ký tự là '✦' (U+2726), chúng ta giả định Quivira sẽ hỗ trợ nó
-        if code == 0x2726:
-            return False # Không thay thế ký tự ✦
+def _get_text_width(text, font, draw_obj):
+    """Tính toán chiều rộng của văn bản."""
+    # textlength() là phương pháp mới hơn và đáng tin cậy hơn textsize()
+    return draw_obj.textlength(text, font=font)
 
-        # Kiểm tra các phạm vi emoji khác
-        for start, end in emoji_ranges:
-            if start <= code <= end:
-                return True
-        
-        # Bắt các ký tự không phải ASCII hoặc Latin-1 mà không nằm trong phạm vi emoji cụ thể
-        # (Đây là một heuristic để bắt các ký tự đặc biệt khác có thể không được hỗ trợ)
-        if code > 255 and not char.isprintable():
-            return True
-        
-        return False
 
-    for char in text:
-        if is_emoji_or_unlikely_supported(char):
-            cleaned_text.append(replacement_char)
+def _get_text_height(text, font, draw_obj):
+    """Tính toán chiều cao của văn bản."""
+    # textbbox() cung cấp bounding box chính xác hơn
+    bbox = draw_obj.textbbox((0, 0), text, font=font)
+    return bbox[3] - bbox[1]
+
+def process_text_for_drawing(original_text, main_font, symbol_font, replacement_char='✦'):
+    """
+    Xử lý văn bản để vẽ, sử dụng font biểu tượng cho các ký tự không được font chính hỗ trợ.
+    Trả về danh sách các (ký tự, font) và chiều rộng tổng cộng.
+    """
+    processed_parts = []
+    total_width = 0
+    temp_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1))) # Tạo một đối tượng draw tạm thời
+
+    for char in original_text:
+        # Kiểm tra xem font chính có thể vẽ ký tự này mà không bị "ô vuông" không
+        # Đây là một heuristic: vẽ ký tự và kiểm tra chiều rộng thực tế.
+        # Nếu chiều rộng là 0 hoặc rất nhỏ, có thể font không hỗ trợ.
+        main_font_char_width = temp_draw.textlength(char, font=main_font)
+        
+        # Đặc biệt xử lý các emoji màu hoặc ký tự phức tạp khác
+        # Pillow thường không vẽ được emoji màu hoặc sẽ vẽ thành ô vuông nếu font không đủ mạnh
+        is_emoji_like = (0x1F600 <= ord(char) <= 0x1F64F or # Emoticons
+                         0x1F300 <= ord(char) <= 0x1F5FF or # Miscellaneous Symbols
+                         ord(char) > 0x2FFF and not char.isprintable()) # Các ký tự Unicode cao khác
+
+        if main_font_char_width > 0 and not is_emoji_like:
+            # Font chính hỗ trợ và không phải là emoji phức tạp
+            processed_parts.append((char, main_font))
+            total_width += main_font_char_width
         else:
-            cleaned_text.append(char)
-    return "".join(cleaned_text)
+            # Font chính không hỗ trợ hoặc là emoji, thử font biểu tượng
+            symbol_font_char_width = temp_draw.textlength(char, font=symbol_font)
+            if symbol_font_char_width > 0:
+                # Font biểu tượng hỗ trợ
+                processed_parts.append((char, symbol_font))
+                total_width += symbol_font_char_width
+            else:
+                # Cả hai font đều không hỗ trợ hoặc là emoji màu phức tạp, dùng ký tự thay thế
+                processed_parts.append((replacement_char, symbol_font)) # Dùng font biểu tượng cho ký tự thay thế
+                total_width += temp_draw.textlength(replacement_char, font=symbol_font)
+    
+    return processed_parts, total_width
 
 
 async def create_welcome_image(member):
     # 1. Tải Font
-    font_welcome, font_name = _load_fonts(FONT_PREFERRED_PATH)
+    font_welcome, font_name, font_symbol = _load_fonts(FONT_MAIN_PATH, FONT_SYMBOL_PATH)
 
     # 2. Tải hoặc tạo ảnh nền
     img = _load_background_image(BACKGROUND_IMAGE_PATH, DEFAULT_IMAGE_DIMENSIONS)
@@ -357,8 +373,8 @@ async def create_welcome_image(member):
     draw = ImageDraw.Draw(img)
 
     # Tính toán offset bóng đổ dựa trên kích thước ảnh (khoảng 0.5% của chiều rộng/chiều cao)
-    shadow_offset_x = int(img_width * 0.005)  # 0.5% của chiều rộng
-    shadow_offset_y = int(img_height * 0.005) # 0.5% của chiều cao
+    shadow_offset_x = int(img_width * 0.005)
+    shadow_offset_y = int(img_height * 0.005)
 
     # 3. Lấy và xử lý Avatar
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
@@ -372,15 +388,14 @@ async def create_welcome_image(member):
         dominant_color_from_avatar = (0, 252, 233) # Default Cyan
 
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo
-    # Tăng saturation_factor lên 1.15 (tăng 15%)
     _, _, initial_l = rgb_to_hsl(*dominant_color_from_avatar)
     if initial_l < 0.35:
         stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.95, clamp_min_l=0.5 # 1.8 * 1.15 = 2.07
+            dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.95, clamp_min_l=0.5
         )
     else:
         stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar, brightness_factor=1.15, saturation_factor=1.495 # 1.3 * 1.15 = 1.495
+            dominant_color_from_avatar, brightness_factor=1.15, saturation_factor=1.495
         )
     stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên
 
@@ -402,38 +417,53 @@ async def create_welcome_image(member):
     )
     _draw_text_with_shadow(
         draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
-        (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y # Dùng offset mới
+        (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
     )
 
     # 7. Vẽ tên người dùng
     name_text_raw = member.display_name
-    # THAY ĐỔI Ở ĐÂY: Lọc các ký tự không được hỗ trợ, nhưng giữ lại '✦' nếu font hỗ trợ
-    name_text = replace_unsupported_chars(name_text_raw, font_name, replacement_char='✦')
+    processed_name_parts, name_text_width = process_text_for_drawing(
+        name_text_raw, font_name, font_symbol, replacement_char='✦'
+    )
     
-    # Nếu tên sau khi lọc quá dài, có thể cắt bớt
-    if len(name_text) > 20: # Giới hạn độ dài tên
-        name_text = name_text[:17] + "..."
+    # Nếu tên sau khi lọc quá dài, có thể cắt bớt (đơn giản hóa vì đã xử lý từng phần)
+    # Cần một logic phức tạp hơn nếu muốn cắt đúng cách với nhiều font
+    display_name_current_length = sum(len(part[0]) for part in processed_name_parts)
+    if display_name_current_length > 20: 
+        # Cắt bớt nếu quá dài (cần logic tinh tế hơn cho việc cắt ký tự hỗn hợp)
+        # Tạm thời chỉ cắt bớt chuỗi gốc và xử lý lại
+        name_text_raw = name_text_raw[:17] + "..."
+        processed_name_parts, name_text_width = process_text_for_drawing(
+            name_text_raw, font_name, font_symbol, replacement_char='✦'
+        )
 
-    name_text_width = draw.textlength(name_text, font=font_name)
     name_text_x = (img_width - name_text_width) / 2
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
-    name_text_y = welcome_text_y_pos + welcome_actual_height + 10
+    name_text_y = welcome_text_y_pos + welcome_actual_height + 10 # Khoảng cách ban đầu
+
     shadow_color_name_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar, brightness_factor=0.5, saturation_factor=1.0, clamp_min_l=0.1, clamp_max_l=0.4
     )
-    _draw_text_with_shadow(
-        draw, name_text, font_name, name_text_x, name_text_y,
-        stroke_color, (*shadow_color_name_rgb, 255), shadow_offset_x, shadow_offset_y # Dùng offset mới
-    )
+    shadow_color_name = (*shadow_color_name_rgb, 255)
 
-    # 8. Vẽ thanh line trang trí (đã quay lại kiểu cũ, gần tên hơn)
-    name_bbox_for_height = draw.textbbox((0, 0), name_text, font=font_name)
-    name_actual_height = name_bbox_for_height[3] - name_bbox_for_height[1]
-    # Khoảng cách từ đáy của tên đến đường line
+    # Vẽ tên người dùng từng phần (từng ký tự với font tương ứng)
+    current_x = name_text_x
+    for char, font_to_use in processed_name_parts:
+        # Vẽ bóng
+        draw.text((current_x + shadow_offset_x, name_text_y + shadow_offset_y), char, font=font_to_use, fill=shadow_color_name)
+        # Vẽ chữ chính
+        draw.text((current_x, name_text_y), char, font=font_to_use, fill=stroke_color)
+        current_x += draw.textlength(char, font=font_to_use)
+
+    # 8. Vẽ thanh line trang trí
+    # Để tính chiều cao của tên chính xác hơn với nhiều font, ta sẽ dùng bounding box của toàn bộ tên
+    # Điều này đã được tính gián tiếp thông qua `_get_text_height` nếu cần, nhưng đơn giản hơn là
+    # lấy chiều cao của một ký tự điển hình từ font tên.
+    name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự mẫu
+    
     line_y = name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME
 
-    # Màu cho line chính, sử dụng màu stroke_color_rgb đã tính toán
     line_color_rgb = stroke_color_rgb
 
     _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb)
@@ -444,27 +474,39 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- Các tác vụ của bot (giữ nguyên) ---
+# --- Các tác vụ của bot (đã chỉnh sửa để không sleep ở before_loop) ---
 @tasks.loop(minutes=1)
 async def activity_heartbeat():
-    # Không sleep ở đây để task có thể chạy ngay lập tức khi bot khởi động
-    # Thời gian sleep ngẫu nhiên sẽ được xử lý bên trong loop
-    pass
+    sleep_duration = random.randint(1 * 60, 3 * 60)
+    print(
+        f"DEBUG: Tác vụ activity_heartbeat đang ngủ {sleep_duration // 60} phút để chuẩn bị cập nhật trạng thái..."
+    )
+    await asyncio.sleep(sleep_duration)
+
+    activities = [
+        discord.Activity(type=discord.ActivityType.watching,
+                         name=f"Dawn_wibu phá đảo tựa game mới "),
+        discord.Activity(type=discord.ActivityType.listening,
+                         name=f"Bài TRÌNH "),
+        discord.Activity(type=discord.ActivityType.playing,
+                         name=f"Minecraft cùng Anh Em "),
+    ]
+
+    try:
+        new_activity = random.choice(activities)
+        await bot.change_presence(activity=new_activity)
+        print(
+            f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name})."
+        )
+
+    except Exception as e:
+        print(
+            f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
 
 @activity_heartbeat.before_loop
 async def before_activity_heartbeat():
-    await bot.wait_until_ready()
+    await bot.wait_until_ready() # Đảm bảo bot đã sẵn sàng trước khi chạy loop
     print("DEBUG: activity_heartbeat task chờ bot sẵn sàng.")
-
-@tasks.loop(minutes=1)
-async def random_message_sender():
-    # Tương tự, không sleep ở đây
-    pass
-
-@random_message_sender.before_loop
-async def before_random_message_sender():
-    await bot.wait_until_ready()
-    print("DEBUG: random_message_sender task chờ bot sẵn sàng.")
 
 # --- Tác vụ gửi tin nhắn định kỳ ---
 CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971
@@ -480,6 +522,37 @@ RANDOM_MESSAGES = [
     "Có câu hỏi khó nào cần tôi giải đáp không? 🧠"
 ]
 
+@tasks.loop(minutes=1)
+async def random_message_sender():
+    send_interval = random.randint(2 * 60, 5 * 60)
+    print(f"DEBUG: Tác vụ random_message_sender sẽ gửi tin nhắn sau {send_interval // 60} phút.")
+    await asyncio.sleep(send_interval)
+
+    channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
+    if channel:
+        if isinstance(channel, discord.TextChannel):
+            if channel.permissions_for(channel.guild.me).send_messages:
+                message_to_send = random.choice(RANDOM_MESSAGES)
+                try:
+                    await channel.send(message_to_send)
+                    print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{message_to_send}' vào kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+                except discord.errors.Forbidden:
+                    print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+                except Exception as e:
+                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
+            else:
+                print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+        else:
+            print(f"LỖI KÊNH: Kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES} không phải là kênh văn bản.")
+    else:
+        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}. Vui lòng kiểm tra lại ID hoặc bot chưa có quyền truy cập kênh đó.")
+
+@random_message_sender.before_loop
+async def before_random_message_sender():
+    await bot.wait_until_ready() # Đảm bảo bot đã sẵn sàng trước khi chạy loop
+    print("DEBUG: random_message_sender task chờ bot sẵn sàng.")
+
+# --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
     """Xử lý sự kiện khi bot sẵn sàng."""
@@ -500,6 +573,7 @@ async def on_ready():
     if not random_message_sender.is_running():
         random_message_sender.start()
         print("DEBUG: Đã bắt đầu tác vụ gửi tin nhắn định kỳ.")
+
 
 @bot.event
 async def on_member_join(member):
