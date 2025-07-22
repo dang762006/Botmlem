@@ -154,9 +154,9 @@ NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
 BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
-LINE_THICKNESS = 5 # CẬP NHẬT ĐỘ DÀY LINE: Tăng từ 4 lên 5
-LINE_VERTICAL_OFFSET_FROM_NAME = 15 # Khoảng cách từ tên đến đường line
-LINE_LENGTH_FACTOR = 0.9 # Tỷ lệ độ dài của line so với độ dài của tên (90%)
+LINE_THICKNESS = 3.5 # CẬP NHẬT ĐỘ DÀY LINE
+LINE_VERTICAL_OFFSET_FROM_NAME = 13 # Khoảng cách từ tên đến đường line
+LINE_LENGTH_FACTOR = 0.8 # Tỷ lệ độ dài của line so với độ dài của tên (80%)
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
@@ -333,7 +333,7 @@ def is_basic_char(char):
         return True
     # Các dấu câu cơ bản và một số ký tự đặc biệt thường thấy trong văn bản
     # Bổ sung: _-+=<,>.?/:;"'|\~!@#$%^*()
-    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=&%$#@_|=~`!@#$%^&*""" + '\\' # Thêm dấu cách và dấu \
+    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=@_|=~`!^*""" + '\\' # Thêm dấu cách và dấu \
 
     if char in special_chars_to_keep or char.isspace(): # Ký tự trắng cũng là basic
         return True
