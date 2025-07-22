@@ -156,7 +156,7 @@ BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 LINE_LENGTH = 150
 LINE_THICKNESS = 3
-LINE_VERTICAL_OFFSET_FROM_NAME = 15 # Đã tăng khoảng cách này lên
+LINE_VERTICAL_OFFSET_FROM_NAME = 15 # Khoảng cách từ tên đến đường line
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
@@ -313,52 +313,57 @@ def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb):
 
 def _get_text_width(text, font, draw_obj):
     """Tính toán chiều rộng của văn bản."""
-    # textlength() là phương pháp mới hơn và đáng tin cậy hơn textsize()
     return draw_obj.textlength(text, font=font)
 
 
 def _get_text_height(text, font, draw_obj):
     """Tính toán chiều cao của văn bản."""
-    # textbbox() cung cấp bounding box chính xác hơn
     bbox = draw_obj.textbbox((0, 0), text, font=font)
     return bbox[3] - bbox[1]
 
+
+def is_basic_char(char):
+    """
+    Kiểm tra xem một ký tự có phải là chữ cái (Tiếng Việt hoặc Latin), số hoặc dấu câu cơ bản không.
+    """
+    if 'a' <= char <= 'z' or 'A' <= char <= 'Z':
+        return True
+    if '0' <= char <= '9':
+        return True
+    # Các dấu câu cơ bản và một số ký tự đặc biệt thường thấy trong văn bản
+    basic_punctuation = r""".,?!;:'"()[]{}<>+-*/=&%$#@""" + ' ' # Thêm dấu cách
+    if char in basic_punctuation:
+        return True
+    
+    # Hỗ trợ thêm các ký tự tiếng Việt có dấu
+    # Đây là một số khối Unicode phổ biến cho tiếng Việt
+    unicode_ord = ord(char)
+    if (0x00C0 <= unicode_ord <= 0x017F) or \
+       (0x1EA0 <= unicode_ord <= 0x1EFF): # Latin-1 Supplement và Vietnamese Characters
+        return True
+    
+    return False
+
+
 def process_text_for_drawing(original_text, main_font, symbol_font, replacement_char='✦'):
     """
-    Xử lý văn bản để vẽ, sử dụng font biểu tượng cho các ký tự không được font chính hỗ trợ.
+    Xử lý văn bản để vẽ.
+    Các ký tự cơ bản (chữ cái, số, dấu câu) dùng main_font.
+    Các ký tự còn lại (ký hiệu, emoji, v.v.) dùng replacement_char với symbol_font.
     Trả về danh sách các (ký tự, font) và chiều rộng tổng cộng.
     """
     processed_parts = []
     total_width = 0
-    temp_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1))) # Tạo một đối tượng draw tạm thời
+    temp_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1))) # Đối tượng draw tạm thời
 
     for char in original_text:
-        # Kiểm tra xem font chính có thể vẽ ký tự này mà không bị "ô vuông" không
-        # Đây là một heuristic: vẽ ký tự và kiểm tra chiều rộng thực tế.
-        # Nếu chiều rộng là 0 hoặc rất nhỏ, có thể font không hỗ trợ.
-        main_font_char_width = temp_draw.textlength(char, font=main_font)
-        
-        # Đặc biệt xử lý các emoji màu hoặc ký tự phức tạp khác
-        # Pillow thường không vẽ được emoji màu hoặc sẽ vẽ thành ô vuông nếu font không đủ mạnh
-        is_emoji_like = (0x1F600 <= ord(char) <= 0x1F64F or # Emoticons
-                         0x1F300 <= ord(char) <= 0x1F5FF or # Miscellaneous Symbols
-                         ord(char) > 0x2FFF and not char.isprintable()) # Các ký tự Unicode cao khác
-
-        if main_font_char_width > 0 and not is_emoji_like:
-            # Font chính hỗ trợ và không phải là emoji phức tạp
+        if is_basic_char(char):
             processed_parts.append((char, main_font))
-            total_width += main_font_char_width
+            total_width += temp_draw.textlength(char, font=main_font)
         else:
-            # Font chính không hỗ trợ hoặc là emoji, thử font biểu tượng
-            symbol_font_char_width = temp_draw.textlength(char, font=symbol_font)
-            if symbol_font_char_width > 0:
-                # Font biểu tượng hỗ trợ
-                processed_parts.append((char, symbol_font))
-                total_width += symbol_font_char_width
-            else:
-                # Cả hai font đều không hỗ trợ hoặc là emoji màu phức tạp, dùng ký tự thay thế
-                processed_parts.append((replacement_char, symbol_font)) # Dùng font biểu tượng cho ký tự thay thế
-                total_width += temp_draw.textlength(replacement_char, font=symbol_font)
+            # Nếu không phải ký tự cơ bản, thay thế bằng replacement_char
+            processed_parts.append((replacement_char, symbol_font))
+            total_width += temp_draw.textlength(replacement_char, font=symbol_font)
     
     return processed_parts, total_width
 
@@ -457,9 +462,6 @@ async def create_welcome_image(member):
         current_x += draw.textlength(char, font=font_to_use)
 
     # 8. Vẽ thanh line trang trí
-    # Để tính chiều cao của tên chính xác hơn với nhiều font, ta sẽ dùng bounding box của toàn bộ tên
-    # Điều này đã được tính gián tiếp thông qua `_get_text_height` nếu cần, nhưng đơn giản hơn là
-    # lấy chiều cao của một ký tự điển hình từ font tên.
     name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự mẫu
     
     line_y = name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME
