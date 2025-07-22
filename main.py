@@ -148,13 +148,13 @@ CACHE_TTL = 300
 
 # --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
 FONT_MAIN_PATH = "1FTV-Designer.otf" # Font chính cho chữ
-FONT_SYMBOL_PATH = "subset-DejaVuSans.ttf" # CẬP NHẬT FONT KÝ HIỆU
+FONT_SYMBOL_PATH = "subset-DejaVuSans.ttf" # Font cho các ký tự đặc biệt/biểu tượng
 WELCOME_FONT_SIZE = 60
 NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
 BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
-LINE_THICKNESS = 4 # CẬP NHẬT ĐỘ DÀY LINE
+LINE_THICKNESS = 5 # CẬP NHẬT ĐỘ DÀY LINE: Tăng từ 4 lên 5
 LINE_VERTICAL_OFFSET_FROM_NAME = 15 # Khoảng cách từ tên đến đường line
 LINE_LENGTH_FACTOR = 0.9 # Tỷ lệ độ dài của line so với độ dài của tên (90%)
 
@@ -325,18 +325,20 @@ def _get_text_height(text, font, draw_obj):
 def is_basic_char(char):
     """
     Kiểm tra xem một ký tự có phải là chữ cái (Tiếng Việt hoặc Latin), số hoặc dấu câu cơ bản không.
+    Bổ sung thêm các ký tự đặc biệt theo yêu cầu.
     """
     if 'a' <= char <= 'z' or 'A' <= char <= 'Z':
         return True
     if '0' <= char <= '9':
         return True
     # Các dấu câu cơ bản và một số ký tự đặc biệt thường thấy trong văn bản
-    basic_punctuation = r""".,?!;:'"()[]{}<>+-*/=&%$#@""" + ' ' # Thêm dấu cách
-    if char in basic_punctuation:
+    # Bổ sung: _-+=<,>.?/:;"'|\~!@#$%^*()
+    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=&%$#@_|=~`!@#$%^&*""" + '\\' # Thêm dấu cách và dấu \
+
+    if char in special_chars_to_keep or char.isspace(): # Ký tự trắng cũng là basic
         return True
     
     # Hỗ trợ thêm các ký tự tiếng Việt có dấu
-    # Đây là một số khối Unicode phổ biến cho tiếng Việt
     unicode_ord = ord(char)
     if (0x00C0 <= unicode_ord <= 0x017F) or \
        (0x1EA0 <= unicode_ord <= 0x1EFF): # Latin-1 Supplement và Vietnamese Characters
@@ -348,7 +350,7 @@ def is_basic_char(char):
 def process_text_for_drawing(original_text, main_font, symbol_font, replacement_char='✦'):
     """
     Xử lý văn bản để vẽ.
-    Các ký tự cơ bản (chữ cái, số, dấu câu) dùng main_font.
+    Các ký tự cơ bản (chữ cái, số, dấu câu, và các ký tự đặc biệt được định nghĩa) dùng main_font.
     Các ký tự còn lại (ký hiệu, emoji, v.v.) dùng replacement_char với symbol_font.
     Trả về danh sách các (ký tự, font) và chiều rộng tổng cộng.
     """
@@ -417,9 +419,11 @@ async def create_welcome_image(member):
     welcome_text = "WELCOME"
     welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
     welcome_text_x = (img_width - welcome_text_width) / 2
+    
+    # LÀM SÁNG BÓNG CỦA CHỮ WELCOME
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
-        dominant_color_from_avatar, brightness_factor=0.6, saturation_factor=1.0, clamp_min_l=0.15, clamp_max_l=0.45
-    )
+        dominant_color_from_avatar, brightness_factor=0.7, saturation_factor=1.0, clamp_min_l=0.2, clamp_max_l=0.5
+    ) # Tăng brightness_factor lên 0.7 và điều chỉnh clamp_min_l
     _draw_text_with_shadow(
         draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
         (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
@@ -432,9 +436,6 @@ async def create_welcome_image(member):
     )
     
     # Nếu tên sau khi lọc quá dài, có thể cắt bớt (đơn giản hóa vì đã xử lý từng phần)
-    # Cần một logic phức tạp hơn nếu muốn cắt đúng cách với nhiều font
-    # Tuy nhiên, đối với tên, thường không cần cắt quá nhiều.
-    # Để an toàn, có thể giới hạn tổng số ký tự nếu tên quá dài
     max_chars_for_name = 25 # Ví dụ giới hạn
     if len(name_text_raw) > max_chars_for_name:
         name_text_raw = name_text_raw[:max_chars_for_name - 3] + "..."
@@ -448,9 +449,10 @@ async def create_welcome_image(member):
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
     name_text_y = welcome_text_y_pos + welcome_actual_height + 10 # Khoảng cách ban đầu
 
+    # LÀM SÁNG BÓNG CỦA CHỮ TÊN
     shadow_color_name_rgb = adjust_color_brightness_saturation(
-        dominant_color_from_avatar, brightness_factor=0.5, saturation_factor=1.0, clamp_min_l=0.1, clamp_max_l=0.4
-    )
+        dominant_color_from_avatar, brightness_factor=0.6, saturation_factor=1.0, clamp_min_l=0.15, clamp_max_l=0.45
+    ) # Tăng brightness_factor lên 0.6 và điều chỉnh clamp_min_l
     shadow_color_name = (*shadow_color_name_rgb, 255)
 
     # Vẽ tên người dùng từng phần (từng ký tự với font tương ứng)
