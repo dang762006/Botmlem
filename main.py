@@ -148,13 +148,13 @@ CACHE_TTL = 300
 
 # --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
 FONT_MAIN_PATH = "1FTV-Designer.otf" # Font chính cho chữ
-FONT_SYMBOL_PATH = "Quivira.otf"     # Font cho các ký tự đặc biệt/biểu tượng
+FONT_SYMBOL_PATH = "subset-DejaVuSans.ttf" # CẬP NHẬT FONT KÝ HIỆU
 WELCOME_FONT_SIZE = 60
 NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
 BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
-LINE_THICKNESS = 3
+LINE_THICKNESS = 4 # CẬP NHẬT ĐỘ DÀY LINE
 LINE_VERTICAL_OFFSET_FROM_NAME = 15 # Khoảng cách từ tên đến đường line
 LINE_LENGTH_FACTOR = 0.9 # Tỷ lệ độ dài của line so với độ dài của tên (90%)
 
