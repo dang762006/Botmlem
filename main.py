@@ -48,7 +48,8 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
 
-    threading.Timer(30, send_self_ping).start()
+    # Bắt đầu tự ping ngay lập tức khi Flask server chạy
+    threading.Timer(10, send_self_ping).start() # Ping sau 10 giây để đảm bảo server khởi động
     print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
 
     app.run(host='0.0.0.0', port=port,
@@ -147,11 +148,10 @@ avatar_cache = {}
 CACHE_TTL = 300
 
 # --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
-FONT_PREFERRED_PATH = "1FTV-Designer.otf"
+FONT_PREFERRED_PATH = "Quivira.otf" # Đã thay đổi font ở đây!
 WELCOME_FONT_SIZE = 60
 NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
-# SHADOW_OFFSET = 3 # Giờ sẽ tính toán động
 BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 LINE_LENGTH = 150
@@ -301,6 +301,52 @@ def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb):
         width=LINE_THICKNESS
     )
 
+def replace_unsupported_chars(text, font, replacement_char='✦'):
+    """
+    Kiểm tra và thay thế các ký tự không được font hỗ trợ bằng ký tự thay thế.
+    Với font Quivira.otf, ký tự '✦' (U+2726) có thể sẽ được hỗ trợ trực tiếp.
+    Tuy nhiên, hàm này vẫn hữu ích để lọc các emoji màu hoặc các ký tự đặc biệt khác
+    mà font có thể không hỗ trợ.
+    """
+    cleaned_text = []
+    # Các khối Unicode của Emoji và một số ký hiệu đặc biệt
+    emoji_ranges = [
+        (0x1F600, 0x1F64F), # Emoticons
+        (0x1F300, 0x1F5FF), # Miscellaneous Symbols and Pictographs
+        (0x1F680, 0x1F6FF), # Transport & Map Symbols
+        (0x2600, 0x26FF),   # Miscellaneous Symbols
+        (0x2700, 0x27BF),   # Dingbats (chứa ✦ U+2726)
+        (0xFE00, 0xFE0F),   # Variation Selectors
+        (0x1F900, 0x1F9FF), # Supplemental Symbols and Pictographs
+        (0x1FA70, 0x1FAFF), # Symbols and Pictographs Extended-A
+    ]
+    
+    def is_emoji_or_unlikely_supported(char):
+        code = ord(char)
+        # Nếu ký tự là '✦' (U+2726), chúng ta giả định Quivira sẽ hỗ trợ nó
+        if code == 0x2726:
+            return False # Không thay thế ký tự ✦
+
+        # Kiểm tra các phạm vi emoji khác
+        for start, end in emoji_ranges:
+            if start <= code <= end:
+                return True
+        
+        # Bắt các ký tự không phải ASCII hoặc Latin-1 mà không nằm trong phạm vi emoji cụ thể
+        # (Đây là một heuristic để bắt các ký tự đặc biệt khác có thể không được hỗ trợ)
+        if code > 255 and not char.isprintable():
+            return True
+        
+        return False
+
+    for char in text:
+        if is_emoji_or_unlikely_supported(char):
+            cleaned_text.append(replacement_char)
+        else:
+            cleaned_text.append(char)
+    return "".join(cleaned_text)
+
+
 async def create_welcome_image(member):
     # 1. Tải Font
     font_welcome, font_name = _load_fonts(FONT_PREFERRED_PATH)
@@ -360,7 +406,14 @@ async def create_welcome_image(member):
     )
 
     # 7. Vẽ tên người dùng
-    name_text = member.display_name
+    name_text_raw = member.display_name
+    # THAY ĐỔI Ở ĐÂY: Lọc các ký tự không được hỗ trợ, nhưng giữ lại '✦' nếu font hỗ trợ
+    name_text = replace_unsupported_chars(name_text_raw, font_name, replacement_char='✦')
+    
+    # Nếu tên sau khi lọc quá dài, có thể cắt bớt
+    if len(name_text) > 20: # Giới hạn độ dài tên
+        name_text = name_text[:17] + "..."
+
     name_text_width = draw.textlength(name_text, font=font_name)
     name_text_x = (img_width - name_text_width) / 2
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
@@ -394,31 +447,24 @@ async def create_welcome_image(member):
 # --- Các tác vụ của bot (giữ nguyên) ---
 @tasks.loop(minutes=1)
 async def activity_heartbeat():
-    sleep_duration = random.randint(1 * 60, 3 * 60)
-    print(
-        f"DEBUG: Tác vụ activity_heartbeat đang ngủ {sleep_duration // 60} phút để chuẩn bị cập nhật trạng thái..."
-    )
-    await asyncio.sleep(sleep_duration)
+    # Không sleep ở đây để task có thể chạy ngay lập tức khi bot khởi động
+    # Thời gian sleep ngẫu nhiên sẽ được xử lý bên trong loop
+    pass
 
-    activities = [
-        discord.Activity(type=discord.ActivityType.watching,
-                         name=f"Dawn_wibu phá đảo tựa game mới "),
-        discord.Activity(type=discord.ActivityType.listening,
-                         name=f"Bài TRÌNH "),
-        discord.Activity(type=discord.ActivityType.playing,
-                         name=f"Minecraft cùng Anh Em "),
-    ]
+@activity_heartbeat.before_loop
+async def before_activity_heartbeat():
+    await bot.wait_until_ready()
+    print("DEBUG: activity_heartbeat task chờ bot sẵn sàng.")
 
-    try:
-        new_activity = random.choice(activities)
-        await bot.change_presence(activity=new_activity)
-        print(
-            f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name})."
-        )
+@tasks.loop(minutes=1)
+async def random_message_sender():
+    # Tương tự, không sleep ở đây
+    pass
 
-    except Exception as e:
-        print(
-            f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
+@random_message_sender.before_loop
+async def before_random_message_sender():
+    await bot.wait_until_ready()
+    print("DEBUG: random_message_sender task chờ bot sẵn sàng.")
 
 # --- Tác vụ gửi tin nhắn định kỳ ---
 CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971
@@ -434,32 +480,6 @@ RANDOM_MESSAGES = [
     "Có câu hỏi khó nào cần tôi giải đáp không? 🧠"
 ]
 
-@tasks.loop(minutes=1)
-async def random_message_sender():
-    send_interval = random.randint(2 * 60, 5 * 60)
-    print(f"DEBUG: Tác vụ random_message_sender sẽ gửi tin nhắn sau {send_interval // 60} phút.")
-    await asyncio.sleep(send_interval)
-
-    channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
-    if channel:
-        if isinstance(channel, discord.TextChannel):
-            if channel.permissions_for(channel.guild.me).send_messages:
-                message_to_send = random.choice(RANDOM_MESSAGES)
-                try:
-                    await channel.send(message_to_send)
-                    print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{message_to_send}' vào kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
-                except discord.errors.Forbidden:
-                    print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
-                except Exception as e:
-                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
-            else:
-                print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
-        else:
-            print(f"LỖI KÊNH: Kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES} không phải là kênh văn bản.")
-    else:
-        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}. Vui lòng kiểm tra lại ID hoặc bot chưa có quyền truy cập kênh đó.")
-
-# --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
     """Xử lý sự kiện khi bot sẵn sàng."""
@@ -540,7 +560,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145> ✦*** [AN BA TO KOM](https://dawnwibu.carrd.co) ***✦  <a:cat3:1323314218476372122>    "
+        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>" # Đã thêm ✦ vào đây
     )
 
 # --- Khởi chạy Flask và Bot Discord ---
