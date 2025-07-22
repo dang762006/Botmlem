@@ -154,9 +154,9 @@ NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
 BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
-LINE_LENGTH = 150
 LINE_THICKNESS = 3
 LINE_VERTICAL_OFFSET_FROM_NAME = 15 # Khoảng cách từ tên đến đường line
+LINE_LENGTH_FACTOR = 0.9 # Tỷ lệ độ dài của line so với độ dài của tên (90%)
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
@@ -300,10 +300,10 @@ def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color,
     draw_obj.text((x + offset_x, y + offset_y), text, font=font, fill=shadow_color)
     draw_obj.text((x, y), text, font=font, fill=main_color)
 
-def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb):
-    """Vẽ thanh line đơn giản (như kiểu cũ)."""
-    line_x1 = img_width // 2 - LINE_LENGTH // 2
-    line_x2 = img_width // 2 + LINE_LENGTH // 2
+def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb, actual_line_length): # Đã thay đổi tham số
+    """Vẽ thanh line đơn giản với độ dài tùy chỉnh."""
+    line_x1 = img_width // 2 - actual_line_length // 2 # Sử dụng actual_line_length
+    line_x2 = img_width // 2 + actual_line_length // 2 # Sử dụng actual_line_length
 
     draw_obj.line(
         [(line_x1, line_y), (line_x2, line_y)],
@@ -433,14 +433,15 @@ async def create_welcome_image(member):
     
     # Nếu tên sau khi lọc quá dài, có thể cắt bớt (đơn giản hóa vì đã xử lý từng phần)
     # Cần một logic phức tạp hơn nếu muốn cắt đúng cách với nhiều font
-    display_name_current_length = sum(len(part[0]) for part in processed_name_parts)
-    if display_name_current_length > 20: 
-        # Cắt bớt nếu quá dài (cần logic tinh tế hơn cho việc cắt ký tự hỗn hợp)
-        # Tạm thời chỉ cắt bớt chuỗi gốc và xử lý lại
-        name_text_raw = name_text_raw[:17] + "..."
+    # Tuy nhiên, đối với tên, thường không cần cắt quá nhiều.
+    # Để an toàn, có thể giới hạn tổng số ký tự nếu tên quá dài
+    max_chars_for_name = 25 # Ví dụ giới hạn
+    if len(name_text_raw) > max_chars_for_name:
+        name_text_raw = name_text_raw[:max_chars_for_name - 3] + "..."
         processed_name_parts, name_text_width = process_text_for_drawing(
             name_text_raw, font_name, font_symbol, replacement_char='✦'
         )
+
 
     name_text_x = (img_width - name_text_width) / 2
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
@@ -468,7 +469,10 @@ async def create_welcome_image(member):
 
     line_color_rgb = stroke_color_rgb
 
-    _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb)
+    # Tính toán độ dài line thực tế dựa trên độ dài tên và LINE_LENGTH_FACTOR
+    actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
+
+    _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb, actual_line_length) # Truyền actual_line_length
 
     # 9. Lưu ảnh và trả về
     img_byte_arr = io.BytesIO()
