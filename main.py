@@ -188,7 +188,7 @@ def _load_fonts(main_path, symbol_path):
         print(f"LỖI FONT: Không thể tải font biểu tượng '{symbol_path}'. Sử dụng font mặc định cho biểu tượng. Chi tiết: {e}")
         font_symbol = ImageFont.load_default().font_variant(size=NAME_FONT_SIZE)
         print("DEBUG: Đã sử dụng font mặc định của Pillow cho biểu tượng.")
-        
+    
     return font_welcome, font_name, font_symbol
 
 def _load_background_image(path, default_dims):
@@ -396,13 +396,19 @@ async def create_welcome_image(member):
 
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo
     _, _, initial_l = rgb_to_hsl(*dominant_color_from_avatar)
-    if initial_l < 0.35:
+    # Tinh chỉnh giá trị để màu luôn sáng và rực rỡ hơn
+    if initial_l < 0.45: # Tăng ngưỡng để nhiều màu được làm sáng mạnh hơn
         stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar, brightness_factor=2.2, saturation_factor=1.95, clamp_min_l=0.5
+            dominant_color_from_avatar,
+            brightness_factor=2.5,  # Tăng thêm độ sáng
+            saturation_factor=2.2,  # Tăng thêm độ bão hòa để rực rỡ
+            clamp_min_l=0.6         # Đảm bảo độ sáng tối thiểu cao hơn (60%)
         )
-    else:
+    else: # Nếu màu ban đầu không quá tối, vẫn tăng nhẹ độ sáng và bão hòa
         stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar, brightness_factor=1.15, saturation_factor=1.495
+            dominant_color_from_avatar,
+            brightness_factor=1.3,  # Tăng nhẹ độ sáng
+            saturation_factor=1.7   # Tăng nhẹ độ bão hòa
         )
     stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên
 
@@ -422,8 +428,12 @@ async def create_welcome_image(member):
     
     # LÀM SÁNG BÓNG CỦA CHỮ WELCOME
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
-        dominant_color_from_avatar, brightness_factor=0.7, saturation_factor=1.0, clamp_min_l=0.2, clamp_max_l=0.5
-    ) # Tăng brightness_factor lên 0.7 và điều chỉnh clamp_min_l
+        dominant_color_from_avatar,
+        brightness_factor=0.8, # Tăng nhẹ độ sáng của bóng WELCOME
+        saturation_factor=1.2, # Tăng nhẹ độ bão hòa để bóng có màu sắc hơn
+        clamp_min_l=0.25,      # Đảm bảo độ sáng tối thiểu cho bóng
+        clamp_max_l=0.55       # Giới hạn độ sáng tối đa, không cho quá sáng
+    )
     _draw_text_with_shadow(
         draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
         (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
@@ -451,8 +461,12 @@ async def create_welcome_image(member):
 
     # LÀM SÁNG BÓNG CỦA CHỮ TÊN
     shadow_color_name_rgb = adjust_color_brightness_saturation(
-        dominant_color_from_avatar, brightness_factor=0.6, saturation_factor=1.0, clamp_min_l=0.15, clamp_max_l=0.45
-    ) # Tăng brightness_factor lên 0.6 và điều chỉnh clamp_min_l
+        dominant_color_from_avatar,
+        brightness_factor=0.7, # Tăng nhẹ độ sáng của bóng tên
+        saturation_factor=1.2, # Tăng nhẹ độ bão hòa
+        clamp_min_l=0.2,       # Đảm bảo độ sáng tối thiểu cho bóng tên
+        clamp_max_l=0.5        # Giới hạn độ sáng tối đa
+    )
     shadow_color_name = (*shadow_color_name_rgb, 255)
 
     # Vẽ tên người dùng từng phần (từng ký tự với font tương ứng)
@@ -547,7 +561,7 @@ async def random_message_sender():
                 except discord.errors.Forbidden:
                     print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
                 except Exception as e:
-                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
+                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDUM_MESSAGES}: {e}")
             else:
                 print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
         else:
