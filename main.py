@@ -112,6 +112,11 @@ def hsl_to_rgb(h, s, l):
 
     return (int(r_new * 255), int(g_new * 255), int(b_new * 255))
 
+def is_dark_color(rgb_color, lightness_threshold=0.3):
+    """Kiểm tra xem màu RGB có tối không dựa trên độ sáng (L trong HSL)."""
+    _, _, l = rgb_to_hsl(*rgb_color)
+    return l < lightness_threshold
+
 def adjust_color_brightness_saturation(rgb_color,
                                        brightness_factor=1.0,
                                        saturation_factor=1.0,
@@ -128,7 +133,7 @@ def adjust_color_brightness_saturation(rgb_color,
 
     return hsl_to_rgb(h, s, l)
 
-async def get_dominant_color(image_bytes):
+async def get_dominant_color(image_bytes, color_count=10):
     try:
         f = io.BytesIO(image_bytes)
         img_temp = Image.open(f).convert("RGB")
@@ -137,11 +142,56 @@ async def get_dominant_color(image_bytes):
         f_temp.seek(0)
 
         color_thief = ColorThief(f_temp)
-        dominant_color_rgb = color_thief.get_color(quality=1)
-        return dominant_color_rgb
+        # Lấy một bảng gồm nhiều màu hơn để có nhiều lựa chọn
+        palette = color_thief.get_palette(color_count=color_count, quality=1)
+
+        brightest_and_most_saturated_color = None
+        max_l = -1
+        max_s = -1
+
+        # Duyệt qua bảng màu để tìm màu sáng nhất và bão hòa nhất, đồng thời loại bỏ màu tối
+        for color in palette:
+            r, g, b = color
+            h, s, l = rgb_to_hsl(r, g, b)
+
+            # Tiêu chí:
+            # - Độ sáng (L) phải cao hơn một ngưỡng nhất định (ví dụ 0.4 = 40%)
+            # - Độ bão hòa (S) phải cao hơn một ngưỡng nhất định (ví dụ 0.3 = 30%)
+            # - Tránh các màu quá gần với màu đen, nâu, xám (bằng cách kiểm tra giá trị RGB thấp)
+            # Một màu được coi là "tối" nếu cả R, G, B đều thấp hoặc L quá thấp.
+            # R,G,B < 60 có thể coi là rất tối.
+            if l > 0.4 and s > 0.3 and not (r < 60 and g < 60 and b < 60):
+                if l > max_l:
+                    max_l = l
+                    max_s = s
+                    brightest_and_most_saturated_color = color
+                elif l == max_l and s > max_s: # Nếu độ sáng bằng nhau, ưu tiên màu bão hòa hơn
+                    max_s = s
+                    brightest_and_most_saturated_color = color
+
+        # Nếu không tìm thấy màu nào thỏa mãn tiêu chí sáng và rực rỡ,
+        # thì vẫn chọn màu sáng nhất (dù có thể không quá bão hòa hoặc vẫn hơi tối)
+        # hoặc fallback về màu mặc định.
+        if brightest_and_most_saturated_color is None:
+            # Thử lại với tiêu chí ít nghiêm ngặt hơn, chỉ đảm bảo là không quá tối
+            fallback_color = (0, 252, 233) # Default Cyan
+            max_l_fallback = -1
+            for color in palette:
+                r, g, b = color
+                _, _, l = rgb_to_hsl(r, g, b)
+                # Chỉ loại bỏ màu cực tối, vẫn ưu tiên sáng
+                if not (r < 40 and g < 40 and b < 40): # Ngưỡng thấp hơn cho fallback
+                    if l > max_l_fallback:
+                        max_l_fallback = l
+                        fallback_color = color
+            brightest_and_most_saturated_color = fallback_color
+
+
+        return brightest_and_most_saturated_color
+
     except Exception as e:
-        print(f"LỖI COLORTHIEF: Không thể lấy màu chủ đạo từ avatar: {e}")
-        return None
+        print(f"LỖI COLORTHIEF: Không thể lấy bảng màu từ avatar: {e}")
+        return (0, 252, 233) # Default Cyan (màu mặc định an toàn, sáng)
 
 avatar_cache = {}
 CACHE_TTL = 300
@@ -387,29 +437,22 @@ async def create_welcome_image(member):
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     avatar_img, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
 
-    # Xác định màu chủ đạo từ avatar
+    # Xác định màu chủ đạo từ avatar (ĐÃ CẬP NHẬT LOGIC TẠI ĐÂY)
     dominant_color_from_avatar = None
     if avatar_bytes:
-        dominant_color_from_avatar = await get_dominant_color(avatar_bytes)
+        dominant_color_from_avatar = await get_dominant_color(avatar_bytes, color_count=15) # Tăng số lượng màu để lựa chọn
     if dominant_color_from_avatar is None:
-        dominant_color_from_avatar = (0, 252, 233) # Default Cyan
+        dominant_color_from_avatar = (0, 252, 233) # Default Cyan (màu mặc định an toàn, sáng)
 
-    # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo
-    _, _, initial_l = rgb_to_hsl(*dominant_color_from_avatar)
-    # Tinh chỉnh giá trị để màu luôn sáng và rực rỡ hơn
-    if initial_l < 0.45: # Tăng ngưỡng để nhiều màu được làm sáng mạnh hơn
-        stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar,
-            brightness_factor=2.5,  # Tăng thêm độ sáng
-            saturation_factor=2.2,  # Tăng thêm độ bão hòa để rực rỡ
-            clamp_min_l=0.6         # Đảm bảo độ sáng tối thiểu cao hơn (60%)
-        )
-    else: # Nếu màu ban đầu không quá tối, vẫn tăng nhẹ độ sáng và bão hòa
-        stroke_color_rgb = adjust_color_brightness_saturation(
-            dominant_color_from_avatar,
-            brightness_factor=1.3,  # Tăng nhẹ độ sáng
-            saturation_factor=1.7   # Tăng nhẹ độ bão hòa
-        )
+    # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo được chọn
+    # Điều chỉnh mạnh hơn để đảm bảo màu luôn sáng và rực rỡ
+    stroke_color_rgb = adjust_color_brightness_saturation(
+        dominant_color_from_avatar,
+        brightness_factor=1.5,  # Luôn tăng độ sáng mạnh
+        saturation_factor=1.8,  # Luôn tăng độ bão hòa mạnh
+        clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
+        clamp_max_l=0.95        # Giới hạn độ sáng tối đa để không bị quá trắng
+    )
     stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên
 
     # 4. Tính toán vị trí Avatar và các phần tử
@@ -561,7 +604,7 @@ async def random_message_sender():
                 except discord.errors.Forbidden:
                     print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
                 except Exception as e:
-                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDUM_MESSAGES}: {e}")
+                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
             else:
                 print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
         else:
