@@ -133,7 +133,7 @@ def adjust_color_brightness_saturation(rgb_color,
 
     return hsl_to_rgb(h, s, l)
 
-async def get_dominant_color(image_bytes, color_count=10):
+async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng màu để có nhiều lựa chọn hơn
     try:
         f = io.BytesIO(image_bytes)
         img_temp = Image.open(f).convert("RGB")
@@ -142,52 +142,98 @@ async def get_dominant_color(image_bytes, color_count=10):
         f_temp.seek(0)
 
         color_thief = ColorThief(f_temp)
-        # Lấy một bảng gồm nhiều màu hơn để có nhiều lựa chọn
         palette = color_thief.get_palette(color_count=color_count, quality=1)
 
-        brightest_and_most_saturated_color = None
-        max_l = -1
-        max_s = -1
+        # Danh sách để lưu các màu đủ tiêu chuẩn, kèm theo điểm số và thứ tự ưu tiên sắc độ
+        qualified_colors = []
 
-        # Duyệt qua bảng màu để tìm màu sáng nhất và bão hòa nhất, đồng thời loại bỏ màu tối
-        for color in palette:
-            r, g, b = color
+        # Định nghĩa ngưỡng và thứ tự ưu tiên sắc độ (Hue)
+        # H (0-1): Đỏ(~0), Cam(~0.08), Vàng(~0.16), Lục(~0.33), Cyan(~0.5), Lam(~0.66), Tím(~0.83), Magenta(~0.9)
+        HUE_PRIORITY_ORDER = [
+            (0.75, 0.95),  # Tím/Magenta
+            (0.40, 0.75),  # Xanh Dương/Xanh Da Trời (Blue/Cyan)
+            (0.18, 0.40),  # Xanh Lá (Green)
+            (0.00, 0.18),  # Đỏ/Cam/Vàng (Warm colors - Red wraps around 0/1)
+            (0.95, 1.00)   # Đỏ (phần còn lại của đỏ)
+        ]
+        
+        def get_hue_priority_index(h_value):
+            # Hàm này sẽ trả về index ưu tiên sắc độ
+            # Index càng nhỏ -> ưu tiên càng cao
+            if 0.75 <= h_value < 0.95: return 0  # Tím/Magenta
+            if 0.40 <= h_value < 0.75: return 1  # Xanh Dương/Xanh Da Trời
+            if 0.18 <= h_value < 0.40: return 2  # Xanh Lá
+            
+            # Xử lý màu ấm (đỏ, cam, vàng)
+            if (0.00 <= h_value < 0.18) or (0.95 <= h_value <= 1.00): return 3 # Đỏ/Cam/Vàng
+            
+            return 99 # Giá trị lớn cho các màu không thuộc nhóm ưu tiên
+
+        for color_rgb in palette:
+            r, g, b = color_rgb
             h, s, l = rgb_to_hsl(r, g, b)
 
-            # Tiêu chí:
-            # - Độ sáng (L) phải cao hơn một ngưỡng nhất định (ví dụ 0.4 = 40%)
-            # - Độ bão hòa (S) phải cao hơn một ngưỡng nhất định (ví dụ 0.3 = 30%)
-            # - Tránh các màu quá gần với màu đen, nâu, xám (bằng cách kiểm tra giá trị RGB thấp)
-            # Một màu được coi là "tối" nếu cả R, G, B đều thấp hoặc L quá thấp.
-            # R,G,B < 60 có thể coi là rất tối.
-            if l > 0.4 and s > 0.3 and not (r < 60 and g < 60 and b < 60):
-                if l > max_l:
-                    max_l = l
-                    max_s = s
-                    brightest_and_most_saturated_color = color
-                elif l == max_l and s > max_s: # Nếu độ sáng bằng nhau, ưu tiên màu bão hòa hơn
-                    max_s = s
-                    brightest_and_most_saturated_color = color
+            # --- TIÊU CHÍ LỰA CHỌN MÀU SẮC DỰA TRÊN VÙNG KHOANH ĐỎ TRONG PHOTOSHOP ---
+            # Vùng khoanh đỏ: Nửa trên bên phải, tránh trắng tinh và đen/xám tối.
+            # 1. Loại bỏ các màu quá tối hoặc quá xám xịt (ngoài vùng mong muốn)
+            # Dựa trên hình ảnh, L thấp (dưới 0.5) hoặc S quá thấp (dưới 0.25) thì loại bỏ trừ trường hợp xám sáng
+            if l < 0.5 and s < 0.25: # Nếu quá tối và ít bão hòa
+                continue
 
-        # Nếu không tìm thấy màu nào thỏa mãn tiêu chí sáng và rực rỡ,
-        # thì vẫn chọn màu sáng nhất (dù có thể không quá bão hòa hoặc vẫn hơi tối)
-        # hoặc fallback về màu mặc định.
-        if brightest_and_most_saturated_color is None:
-            # Thử lại với tiêu chí ít nghiêm ngặt hơn, chỉ đảm bảo là không quá tối
-            fallback_color = (0, 252, 233) # Default Cyan
+            # 2. Hạn chế màu trắng/rất nhạt (phía trên cùng hình vuông)
+            if l > 0.95: # Nếu quá gần trắng tinh (L > 95%)
+                continue
+            
+            # 3. Phân loại màu: Rực rỡ & Sáng (Ưu tiên 1) vs Xám Sáng (Ưu tiên 2)
+            is_vibrant_and_bright = (l >= 0.5 and s > 0.4) # Màu trong vùng khoanh đỏ chính
+            is_bright_grayish = (l >= 0.6 and s >= 0.25 and s <= 0.4) # Tiêu chí "xám sáng" của bạn
+
+            if is_vibrant_and_bright:
+                # Tính điểm: Ưu tiên cả bão hòa và sáng cao
+                score = s * l
+                qualified_colors.append({
+                    'color': color_rgb,
+                    'score': score,
+                    'type': 'vibrant_bright',
+                    'hue_priority': get_hue_priority_index(h)
+                })
+            elif is_bright_grayish:
+                # Điểm thấp hơn cho xám sáng, ưu tiên sáng hơn
+                score = l * 0.5 + s * 0.5 # Điểm cân bằng hơn cho xám sáng
+                qualified_colors.append({
+                    'color': color_rgb,
+                    'score': score,
+                    'type': 'bright_grayish',
+                    'hue_priority': 98 # Ưu tiên thấp hơn màu rực rỡ
+                })
+            # Các màu còn lại không được thêm vào qualified_colors và sẽ không được chọn trừ khi không còn lựa chọn nào.
+        
+        # Sắp xếp các màu đủ điều kiện
+        # Ưu tiên 1: loại 'vibrant_bright' trước 'bright_grayish'
+        # Ưu tiên 2: điểm số (score) từ cao đến thấp
+        # Ưu tiên 3: thứ tự sắc độ (hue_priority) từ thấp đến cao (Tím -> Xanh -> Ấm)
+        qualified_colors.sort(key=lambda x: (
+            0 if x['type'] == 'vibrant_bright' else 1, # Loại màu (0 là rực rỡ, 1 là xám sáng)
+            -x['score'], # Điểm số (giảm dần)
+            x['hue_priority'] # Thứ tự sắc độ (tăng dần)
+        ))
+
+        if qualified_colors:
+            return qualified_colors[0]['color'] # Chọn màu ưu tiên nhất
+        else:
+            # Fallback nếu không tìm thấy màu nào thỏa mãn
+            # Trong trường hợp avatar quá tối hoặc quá trắng/xám xịt
+            # Vẫn cố gắng tìm màu sáng nhất trong toàn bộ palette
+            best_fallback_color = (0, 252, 233) # Default Cyan
             max_l_fallback = -1
             for color in palette:
-                r, g, b = color
-                _, _, l = rgb_to_hsl(r, g, b)
-                # Chỉ loại bỏ màu cực tối, vẫn ưu tiên sáng
-                if not (r < 40 and g < 40 and b < 40): # Ngưỡng thấp hơn cho fallback
+                _, _, l = rgb_to_hsl(*color)
+                # Chỉ loại bỏ màu cực tối hoàn toàn (đen kịt)
+                if not (color[0] < 30 and color[1] < 30 and color[2] < 30):
                     if l > max_l_fallback:
                         max_l_fallback = l
-                        fallback_color = color
-            brightest_and_most_saturated_color = fallback_color
-
-
-        return brightest_and_most_saturated_color
+                        best_fallback_color = color
+            return best_fallback_color
 
     except Exception as e:
         print(f"LỖI COLORTHIEF: Không thể lấy bảng màu từ avatar: {e}")
@@ -440,7 +486,7 @@ async def create_welcome_image(member):
     # Xác định màu chủ đạo từ avatar (ĐÃ CẬP NHẬT LOGIC TẠI ĐÂY)
     dominant_color_from_avatar = None
     if avatar_bytes:
-        dominant_color_from_avatar = await get_dominant_color(avatar_bytes, color_count=15) # Tăng số lượng màu để lựa chọn
+        dominant_color_from_avatar = await get_dominant_color(avatar_bytes, color_count=20) # Tăng số lượng màu để lựa chọn
     if dominant_color_from_avatar is None:
         dominant_color_from_avatar = (0, 252, 233) # Default Cyan (màu mặc định an toàn, sáng)
 
@@ -448,8 +494,8 @@ async def create_welcome_image(member):
     # Điều chỉnh mạnh hơn để đảm bảo màu luôn sáng và rực rỡ
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
-        brightness_factor=1.5,  # Luôn tăng độ sáng mạnh
-        saturation_factor=1.8,  # Luôn tăng độ bão hòa mạnh
+        brightness_factor=1.3,  # Tăng độ sáng
+        saturation_factor=1.6,  # Tăng độ bão hòa
         clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
         clamp_max_l=0.95        # Giới hạn độ sáng tối đa để không bị quá trắng
     )
