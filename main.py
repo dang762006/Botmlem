@@ -494,7 +494,7 @@ async def create_welcome_image(member):
     # Điều chỉnh mạnh hơn để đảm bảo màu luôn sáng và rực rỡ
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
-        brightness_factor=1.3,  # Tăng độ sáng
+        brightness_factor=1.1,  # Tăng độ sáng
         saturation_factor=3.6,  # Tăng độ bão hòa
         clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
         clamp_max_l=0.90        # Giới hạn độ sáng tối đa để không bị quá trắng
