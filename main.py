@@ -181,7 +181,7 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
                 continue
 
             # 2. Hạn chế màu trắng/rất nhạt (phía trên cùng hình vuông)
-            if l > 0.95: # Nếu quá gần trắng tinh (L > 95%)
+            if l > 0.90: # Nếu quá gần trắng tinh (L > 90%)
                 continue
             
             # 3. Phân loại màu: Rực rỡ & Sáng (Ưu tiên 1) vs Xám Sáng (Ưu tiên 2)
@@ -497,7 +497,7 @@ async def create_welcome_image(member):
         brightness_factor=1.3,  # Tăng độ sáng
         saturation_factor=1.6,  # Tăng độ bão hòa
         clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
-        clamp_max_l=0.95        # Giới hạn độ sáng tối đa để không bị quá trắng
+        clamp_max_l=0.90        # Giới hạn độ sáng tối đa để không bị quá trắng
     )
     stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên
 
