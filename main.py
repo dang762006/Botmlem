@@ -55,7 +55,7 @@ def run_flask():
             debug=False)
 
 # --- Cấu hình Bot Discord ---
-TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Hoặc TOKEN = os.getenv('TOKEN') nếu biến môi trường của bạn là 'TOKEN'
 
 intents = discord.Intents.default()
 intents.members = True
@@ -181,7 +181,7 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
                 continue
 
             # 2. Hạn chế màu trắng/rất nhạt (phía trên cùng hình vuông)
-            if l > 0.80: # Nếu quá gần trắng tinh (L > 80%)
+            if l > 0.90: # Nếu quá gần trắng tinh (L > 90%) - Đã sửa từ 0.95
                 continue
             
             # 3. Phân loại màu: Rực rỡ & Sáng (Ưu tiên 1) vs Xám Sáng (Ưu tiên 2)
@@ -207,7 +207,7 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
                     'hue_priority': 98 # Ưu tiên thấp hơn màu rực rỡ
                 })
             # Các màu còn lại không được thêm vào qualified_colors và sẽ không được chọn trừ khi không còn lựa chọn nào.
-        
+            
         # Sắp xếp các màu đủ điều kiện
         # Ưu tiên 1: loại 'vibrant_bright' trước 'bright_grayish'
         # Ưu tiên 2: điểm số (score) từ cao đến thấp
@@ -249,6 +249,8 @@ WELCOME_FONT_SIZE = 60
 NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210
 BACKGROUND_IMAGE_PATH = "welcome.png"
+STROKE_IMAGE_PATH = "stroke.png" # ĐƯỜNG DẪN MỚI CHO ẢNH STROKE
+AVATAR_MASK_IMAGE_PATH = "avatar_mask.png" # ĐƯỜNG DẪN MỚI CHO ẢNH MASK AVATAR
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 LINE_THICKNESS = 3 # CẬP NHẬT ĐỘ DÀY LINE
 LINE_VERTICAL_OFFSET_FROM_NAME = 13 # Khoảng cách từ tên đến đường line
@@ -300,8 +302,25 @@ def _load_background_image(path, default_dims):
         img = Image.new('RGBA', default_dims, color=(0, 0, 0, 255))
     return img
 
+def _load_stroke_overlay_image(path, default_dims):
+    """Tải ảnh stroke overlay (viền avatar) từ file PNG."""
+    try:
+        img = Image.open(path).convert("RGBA")
+        # Kiểm tra kích thước, cảnh báo nếu không khớp background
+        if img.size != default_dims:
+            print(f"CẢNH BÁO: Ảnh stroke overlay '{path}' có kích thước {img.size} khác với ảnh nền {default_dims}. Có thể gây lệch vị trí.")
+        print(f"DEBUG: Đã tải ảnh stroke overlay: {path} với kích thước {img.size[0]}x{img.size[1]}")
+        return img
+    except FileNotFoundError:
+        print(f"LỖI STROKE: Không tìm thấy ảnh stroke overlay '{path}'. Sẽ bỏ qua stroke này.")
+        return None # Trả về None nếu không tìm thấy
+    except Exception as e:
+        print(f"LỖỖI STROKE: Lỗi khi mở ảnh stroke overlay: {e}. Sẽ bỏ qua stroke này.")
+        return None
+
+
 async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
-    """Tải và xử lý avatar, có dùng cache."""
+    """Tải và xử lý avatar, có dùng cache và áp dụng mask tròn."""
     avatar_bytes = None
     if member_avatar_url in cache and (asyncio.get_event_loop().time() - cache[member_avatar_url]['timestamp']) < CACHE_TTL:
         avatar_bytes = cache[member_avatar_url]['data']
@@ -324,72 +343,32 @@ async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
         avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
 
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+
+    # --- BỔ SUNG ĐOẠN CODE NÀY ĐỂ ÁP DỤNG MASK HÌNH TRÒN ---
+    try:
+        # Tải ảnh mask hình tròn
+        circular_mask_img = Image.open(AVATAR_MASK_IMAGE_PATH).convert("L") # Sử dụng hằng số
+
+        # Đảm bảo kích thước mask khớp với kích thước avatar đã resize
+        if circular_mask_img.size != (avatar_size, avatar_size):
+            print(f"CẢNH BÁO: Kích thước mask avatar '{AVATAR_MASK_IMAGE_PATH}' ({circular_mask_img.size}) không khớp với kích thước avatar ({avatar_size},{avatar_size}). Sẽ resize mask.")
+            circular_mask_img = circular_mask_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+
+        # Áp dụng mask cho avatar
+        # Kênh alpha của avatar_img sẽ được thay thế bằng mask này
+        avatar_img.putalpha(circular_mask_img)
+
+    except FileNotFoundError:
+        print(f"LỖI MASK: Không tìm thấy file mask avatar '{AVATAR_MASK_IMAGE_PATH}'. Avatar sẽ không được cắt tròn.")
+    except Exception as e:
+        print(f"LỖI MASK: Lỗi khi áp dụng mask avatar: {e}. Avatar sẽ không được cắt tròn.")
+    # --- KẾT THÚC ĐOẠN CODE BỔ SUNG ---
+
     return avatar_img, avatar_bytes
 
-def _draw_circular_avatar_and_stroke(img, avatar_img, avatar_x, avatar_y, avatar_size, stroke_color_rgb):
-    """Vẽ avatar tròn và viền xung quanh."""
-    draw = ImageDraw.Draw(img)
-
-    # Tính toán màu và độ trong suốt cho nền mờ phía sau avatar
-    blur_color_with_alpha = (*stroke_color_rgb, 128)
-    blur_bg_raw_circle = Image.new('RGBA', (AVATAR_SIZE, AVATAR_SIZE), (0, 0, 0, 0))
-    draw_blur_bg_raw = ImageDraw.Draw(blur_bg_raw_circle)
-    draw_blur_bg_raw.ellipse((0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=blur_color_with_alpha)
-    img.paste(blur_bg_raw_circle, (avatar_x, avatar_y), blur_bg_raw_circle)
-
-    # Vẽ stroke (viền) có khoảng trống trong suốt
-    stroke_thickness = 6
-    gap_size = 5
-    outer_stroke_diameter = AVATAR_SIZE + (gap_size * 2) + (stroke_thickness * 2)
-    inner_stroke_diameter = AVATAR_SIZE + (gap_size * 2)
-    supersample_factor = 4 # Để làm mượt đường tròn
-
-    temp_stroke_layer_supersampled = Image.new(
-        'RGBA', (outer_stroke_diameter * supersample_factor,
-                 outer_stroke_diameter * supersample_factor), (0, 0, 0, 0))
-    draw_temp_stroke = ImageDraw.Draw(temp_stroke_layer_supersampled)
-
-    draw_temp_stroke.ellipse((0, 0, outer_stroke_diameter * supersample_factor,
-                              outer_stroke_diameter * supersample_factor),
-                             fill=(*stroke_color_rgb, 255)) # Màu viền chính
-
-    inner_offset_x = (outer_stroke_diameter * supersample_factor - inner_stroke_diameter * supersample_factor) // 2
-    inner_offset_y = (outer_stroke_diameter * supersample_factor - inner_stroke_diameter * supersample_factor) // 2
-
-    draw_temp_stroke.ellipse(
-        (inner_offset_x, inner_offset_y,
-         inner_offset_x + inner_stroke_diameter * supersample_factor,
-         inner_offset_y + inner_stroke_diameter * supersample_factor),
-        fill=(0, 0, 0, 0)) # Khoảng trống bên trong
-
-    stroke_final_image = temp_stroke_layer_supersampled.resize(
-        (outer_stroke_diameter, outer_stroke_diameter), Image.LANCZOS)
-
-    stroke_paste_x = avatar_x - gap_size - stroke_thickness
-    stroke_paste_y = avatar_y - gap_size - stroke_thickness
-
-    img.paste(stroke_final_image, (stroke_paste_x, stroke_paste_y), stroke_final_image)
-
-    # Dán avatar chính và đảm bảo nó tròn
-    avatar_layer = Image.new('RGBA', (AVATAR_SIZE, AVATAR_SIZE), (0, 0, 0, 0))
-    avatar_layer.paste(avatar_img, (0, 0))
-
-    mask_supersample_factor = 4
-    mask_raw_size = AVATAR_SIZE * mask_supersample_factor
-    circular_mask_raw = Image.new('L', (mask_raw_size, mask_raw_size), 0)
-    draw_circular_mask_raw = ImageDraw.Draw(circular_mask_raw)
-    draw_circular_mask_raw.ellipse((0, 0, mask_raw_size, mask_raw_size), fill=255)
-    circular_mask_smoothed = circular_mask_raw.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
-
-    try:
-        original_alpha = avatar_layer.split()[3]
-    except ValueError:
-        original_alpha = Image.new('L', circular_mask_smoothed.size, 255)
-
-    final_alpha_mask = Image.composite(
-        circular_mask_smoothed, Image.new('L', circular_mask_smoothed.size, 0), original_alpha)
-
-    img.paste(avatar_layer, (avatar_x, avatar_y), final_alpha_mask)
+# --- HÀM _draw_circular_avatar_and_stroke BỊ LOẠI BỎ / THAY THẾ HOÀN TOÀN ---
+# Lý do: Logic vẽ viền và cắt tròn đã được thay thế bằng file PNG stroke và PNG mask.
+# Bạn có thể xóa hoàn toàn hàm này khỏi code của mình.
 
 def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color, offset_x, offset_y):
     """Vẽ văn bản với hiệu ứng đổ bóng đơn giản với offset tùy chỉnh."""
@@ -479,11 +458,11 @@ async def create_welcome_image(member):
     shadow_offset_x = int(img_width * 0.005)
     shadow_offset_y = int(img_height * 0.005)
 
-    # 3. Lấy và xử lý Avatar
+    # 3. Lấy và xử lý Avatar (Đã được cắt tròn nhờ mask)
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     avatar_img, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
 
-    # Xác định màu chủ đạo từ avatar (ĐÃ CẬP NHẬT LOGIC TẠI ĐÂY)
+    # Xác định màu chủ đạo từ avatar
     dominant_color_from_avatar = None
     if avatar_bytes:
         dominant_color_from_avatar = await get_dominant_color(avatar_bytes, color_count=20) # Tăng số lượng màu để lựa chọn
@@ -491,11 +470,10 @@ async def create_welcome_image(member):
         dominant_color_from_avatar = (0, 252, 233) # Default Cyan (màu mặc định an toàn, sáng)
 
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo được chọn
-    # Điều chỉnh mạnh hơn để đảm bảo màu luôn sáng và rực rỡ
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=1.1,  # Tăng độ sáng
-        saturation_factor=4.6,  # Tăng độ bão hòa
+        saturation_factor=2.6,  # Tăng độ bão hòa
         clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
         clamp_max_l=0.90        # Giới hạn độ sáng tối đa để không bị quá trắng
     )
@@ -507,10 +485,27 @@ async def create_welcome_image(member):
     y_offset_from_avatar = 20
     welcome_text_y_pos = avatar_y + AVATAR_SIZE + y_offset_from_avatar
 
-    # 5. Vẽ Avatar và viền
-    _draw_circular_avatar_and_stroke(img, avatar_img, avatar_x, avatar_y, AVATAR_SIZE, stroke_color_rgb)
+    # --- 5. Dán ảnh stroke PNG đã tô màu ---
+    stroke_overlay_img = _load_stroke_overlay_image(STROKE_IMAGE_PATH, img.size)
 
-    # 6. Vẽ chữ WELCOME
+    if stroke_overlay_img:
+        # Tạo một ảnh mới có cùng kích thước với stroke_overlay_img và màu sắc stroke_color_rgb
+        # Màu này sẽ là màu solid của stroke
+        tint_layer = Image.new('RGBA', stroke_overlay_img.size, (*stroke_color_rgb, 255))
+
+        # Kết hợp tint_layer với alpha channel của stroke_overlay_img
+        # Để chỉ tô màu vào phần stroke, phần trong suốt vẫn trong suốt
+        final_stroke_layer = Image.composite(tint_layer, Image.new('RGBA', stroke_overlay_img.size, (0,0,0,0)), stroke_overlay_img)
+        
+        # Dán ảnh stroke đã tô màu lên ảnh nền chính
+        # Vị trí dán là (0,0) vì ảnh stroke overlay đã có cùng kích thước và vị trí đúng
+        img.paste(final_stroke_layer, (0, 0), final_stroke_layer)
+
+    # --- 6. Dán Avatar (đã được cắt tròn bởi mask trong _get_and_process_avatar) ---
+    img.paste(avatar_img, (avatar_x, avatar_y), avatar_img) # Dán avatar_img trực tiếp (đã có alpha channel từ mask)
+
+
+    # 7. Vẽ chữ WELCOME
     welcome_text = "WELCOME"
     welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
     welcome_text_x = (img_width - welcome_text_width) / 2
@@ -521,14 +516,14 @@ async def create_welcome_image(member):
         brightness_factor=1.2, # Tăng nhẹ độ sáng của bóng WELCOME
         saturation_factor=3.2, # Tăng nhẹ độ bão hòa để bóng có màu sắc hơn
         clamp_min_l=0.25,      # Đảm bảo độ sáng tối thiểu cho bóng
-        clamp_max_l=0.55       # Giới hạn độ sáng tối đa, không cho quá sáng
+        clamp_max_l=0.55       # Giới hạn độ sáng tối đa để không bị quá trắng
     )
     _draw_text_with_shadow(
-        draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
-        (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
+        draw, welcome_text, font_welcome, int(welcome_text_x), int(welcome_text_y_pos), # Ép kiểu về int
+        (255, 255, 255), (*shadow_color_welcome_rgb, 255), int(shadow_offset_x), int(shadow_offset_y) # Ép kiểu về int
     )
 
-    # 7. Vẽ tên người dùng
+    # 8. Vẽ tên người dùng
     name_text_raw = member.display_name
     processed_name_parts, name_text_width = process_text_for_drawing(
         name_text_raw, font_name, font_symbol, replacement_char='✦'
@@ -548,13 +543,13 @@ async def create_welcome_image(member):
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
     name_text_y = welcome_text_y_pos + welcome_actual_height + 10 # Khoảng cách ban đầu
 
-    # LÀM SÁNG BÓNG CỦA CHỮ TÊN
+    # LÀM SÁNG BÓNG CỦA CHỮ TÊN (Cũng điều chỉnh saturation_factor)
     shadow_color_name_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=1.2, # Tăng nhẹ độ sáng của bóng tên
         saturation_factor=3.2, # Tăng nhẹ độ bão hòa
-        clamp_min_l=0.25,       # Đảm bảo độ sáng tối thiểu cho bóng tên
-        clamp_max_l=0.55        # Giới hạn độ sáng tối đa
+        clamp_min_l=0.25,      # Đảm bảo độ sáng tối thiểu cho bóng tên
+        clamp_max_l=0.55       # Giới hạn độ sáng tối đa
     )
     shadow_color_name = (*shadow_color_name_rgb, 255)
 
@@ -562,12 +557,12 @@ async def create_welcome_image(member):
     current_x = name_text_x
     for char, font_to_use in processed_name_parts:
         # Vẽ bóng
-        draw.text((current_x + shadow_offset_x, name_text_y + shadow_offset_y), char, font=font_to_use, fill=shadow_color_name)
+        draw.text((int(current_x) + int(shadow_offset_x), int(name_text_y) + int(shadow_offset_y)), char, font=font_to_use, fill=shadow_color_name) # Ép kiểu về int
         # Vẽ chữ chính
-        draw.text((current_x, name_text_y), char, font=font_to_use, fill=stroke_color)
+        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color) # Ép kiểu về int
         current_x += draw.textlength(char, font=font_to_use)
 
-    # 8. Vẽ thanh line trang trí
+    # 9. Vẽ thanh line trang trí
     name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự mẫu
     
     line_y = name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME
@@ -577,9 +572,9 @@ async def create_welcome_image(member):
     # Tính toán độ dài line thực tế dựa trên độ dài tên và LINE_LENGTH_FACTOR
     actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
 
-    _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb, actual_line_length) # Truyền actual_line_length
+    _draw_simple_decorative_line(draw, img_width, int(line_y), line_color_rgb, int(actual_line_length)) # Ép kiểu về int
 
-    # 9. Lưu ảnh và trả về
+    # 10. Lưu ảnh và trả về
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
@@ -762,6 +757,8 @@ async def start_bot_and_flask():
     print("Bắt đầu khởi động bot Discord...")
 
     try:
+        # Sử dụng await bot.start(TOKEN) thay vì bot.run(TOKEN)
+        # để cho phép nó chạy trong một asyncio event loop đã tồn tại
         await bot.start(TOKEN)
     except discord.errors.HTTPException as e:
         if e.status == 429:
