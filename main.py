@@ -153,7 +153,7 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
             (0.75, 0.95),  # Tím/Magenta
             (0.40, 0.75),  # Xanh Dương/Xanh Da Trời (Blue/Cyan)
             (0.18, 0.40),  # Xanh Lá (Green)
-            (0.00, 0.18),  # Đỏ/Cam/Vàng (Warm colors - Red wraps around 0/1)
+            (0.00, 0.18),  # Đỏ/Cam/Vàng (Red wraps around 0/1)
             (0.95, 1.00)   # Đỏ (phần còn lại của đỏ)
         ]
         
@@ -508,7 +508,7 @@ async def create_welcome_image(member):
     # 7. Vẽ chữ WELCOME
     welcome_text = "WELCOME"
     welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
-    welcome_text_x = (img_width - welcome_text_width) / 2
+    welcome_text_x = int((img_width - welcome_text_width) / 2) # Đã thêm int()
     
     # LÀM SÁNG BÓNG CỦA CHỮ WELCOME
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
@@ -519,8 +519,8 @@ async def create_welcome_image(member):
         clamp_max_l=0.55       # Giới hạn độ sáng tối đa để không bị quá trắng
     )
     _draw_text_with_shadow(
-        draw, welcome_text, font_welcome, int(welcome_text_x), int(welcome_text_y_pos), # Ép kiểu về int
-        (255, 255, 255), (*shadow_color_welcome_rgb, 255), int(shadow_offset_x), int(shadow_offset_y) # Ép kiểu về int
+        draw, welcome_text, font_welcome, welcome_text_x, int(welcome_text_y_pos),
+        (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
     )
 
     # 8. Vẽ tên người dùng
@@ -538,7 +538,7 @@ async def create_welcome_image(member):
         )
 
 
-    name_text_x = (img_width - name_text_width) / 2
+    name_text_x = int((img_width - name_text_width) / 2) # Đã thêm int()
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
     name_text_y = welcome_text_y_pos + welcome_actual_height + 10 # Khoảng cách ban đầu
@@ -554,13 +554,16 @@ async def create_welcome_image(member):
     shadow_color_name = (*shadow_color_name_rgb, 255)
 
     # Vẽ tên người dùng từng phần (từng ký tự với font tương ứng)
-    current_x = name_text_x
+    current_x = name_text_x # current_x bắt đầu là int
     for char, font_to_use in processed_name_parts:
-        # Vẽ bóng
-        draw.text((int(current_x) + int(shadow_offset_x), int(name_text_y) + int(shadow_offset_y)), char, font=font_to_use, fill=shadow_color_name) # Ép kiểu về int
-        # Vẽ chữ chính
-        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color) # Ép kiểu về int
-        current_x += draw.textlength(char, font=font_to_use)
+        # Đảm bảo tất cả các tọa độ là số nguyên
+        shadow_x = current_x + shadow_offset_x
+        shadow_y = name_text_y + shadow_offset_y
+        draw.text((int(shadow_x), int(shadow_y)), char, font=font_to_use, fill=shadow_color_name) # Đã thêm int()
+        
+        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color) # Đã thêm int()
+        
+        current_x = int(current_x + draw.textlength(char, font=font_to_use)) # Đảm bảo current_x luôn là int sau mỗi lần cộng
 
     # 9. Vẽ thanh line trang trí
     name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự mẫu
@@ -572,7 +575,7 @@ async def create_welcome_image(member):
     # Tính toán độ dài line thực tế dựa trên độ dài tên và LINE_LENGTH_FACTOR
     actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
 
-    _draw_simple_decorative_line(draw, img_width, int(line_y), line_color_rgb, int(actual_line_length)) # Ép kiểu về int
+    _draw_simple_decorative_line(draw, img_width, int(line_y), line_color_rgb, actual_line_length) # Đã thêm int()
 
     # 10. Lưu ảnh và trả về
     img_byte_arr = io.BytesIO()
