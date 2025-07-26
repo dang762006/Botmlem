@@ -470,7 +470,7 @@ async def create_welcome_image(member):
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=1.5,
-        saturation_factor=2.6,
+        saturation_factor=4.6,
         clamp_min_l=0.6,
         clamp_max_l=0.90
     )
