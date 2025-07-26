@@ -60,23 +60,9 @@ TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Hoặc TOKEN = os.getenv('TOKEN') nếu
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
+intents.presences = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
-
-# --- Event: Bot đã sẵn sàng ---
-@bot.event
-async def on_ready():
-    print(f'Bot đã đăng nhập với tên: {bot.user}')
-    print('Đang đồng bộ hóa các lệnh slash...')
-    try:
-        synced = await bot.tree.sync()
-        print(f"Đã đồng bộ hóa {len(synced)} lệnh.")
-    except Exception as e:
-        print(f"LỖI: Không thể đồng bộ hóa lệnh slash: {e}")
-    # Đảm bảo các tài nguyên tĩnh được tải sau khi bot ready
-    _load_static_assets()
-    print("Các tài nguyên tĩnh đã được tải.")
-
 
 # --- Các hàm xử lý màu sắc (giữ nguyên logic phức tạp của bạn) ---
 def rgb_to_hsl(r, g, b):
@@ -406,29 +392,32 @@ def is_basic_char(char):
         return True
     if '0' <= char <= '9':
         return True
+    
     # Các dấu câu cơ bản và một số ký tự đặc biệt
     special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=@_|=~`!^*""" + '\\'
     if char in special_chars_to_keep or char.isspace():
         return True
+    
     # Hỗ trợ thêm các ký tự tiếng Việt có dấu
     unicode_ord = ord(char)
     if (0x00C0 <= unicode_ord <= 0x017F) or \
        (0x1EA0 <= unicode_ord <= 0x1EFF):
         return True
+    
     return False
 
 def process_text_for_drawing(original_text, main_font, symbol_font, replacement_char='✦', temp_draw_obj=None):
     """
-    Xử lý văn bản để vẽ. Các ký tự cơ bản dùng main_font.
-    Các ký tự không cơ bản dùng replacement_char với symbol_font.
+    Xử lý văn bản để vẽ.
+    Các ký tự cơ bản dùng main_font. Các ký tự không cơ bản dùng replacement_char với symbol_font.
     Trả về danh sách các (ký tự, font) và chiều rộng tổng cộng.
     """
     processed_parts = []
     total_width = 0
-
+    
     # Sử dụng đối tượng draw đã được truyền vào hoặc tạo mới nếu không có
     if temp_draw_obj is None:
-        temp_draw_obj = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
+        temp_draw_obj = ImageDraw.Draw(Image.new('RGBA', (1, 1))) 
 
     for char in original_text:
         if is_basic_char(char):
@@ -437,125 +426,303 @@ def process_text_for_drawing(original_text, main_font, symbol_font, replacement_
         else:
             processed_parts.append((replacement_char, symbol_font))
             total_width += temp_draw_obj.textlength(replacement_char, font=symbol_font)
+    
     return processed_parts, total_width
+
 
 async def create_welcome_image(member):
     # 1. Sử dụng font đã tải sẵn và kiểm tra lại (chỉ để đảm bảo)
     if not all([GLOBAL_FONT_WELCOME, GLOBAL_FONT_NAME, GLOBAL_FONT_SYMBOL]):
         print("CẢNH BÁO: Font chưa được tải sẵn. Đang cố gắng tải lại. (Điều này không nên xảy ra sau on_ready)")
         _load_static_assets() # Tải lại nếu chưa được tải (fallback)
+
     font_welcome = GLOBAL_FONT_WELCOME
     font_name = GLOBAL_FONT_NAME
     font_symbol = GLOBAL_FONT_SYMBOL
 
     # 2. Tạo bản sao của ảnh nền từ đối tượng đã tải trước
-    # Sử dụng .copy() để tránh thay đổi ảnh gốc đã tải
-    img = GLOBAL_BACKGROUND_IMAGE.copy()
+    # Sử dụng .copy() để tránh thay đổi ảnh nền gốc được lưu trong GLOBAL_BACKGROUND_IMAGE
+    if GLOBAL_BACKGROUND_IMAGE:
+        img = GLOBAL_BACKGROUND_IMAGE.copy()
+    else:
+        print("LỖI: Ảnh nền chưa được tải sẵn. Tạo ảnh nền mặc định.")
+        img = Image.new('RGBA', DEFAULT_IMAGE_DIMENSIONS, color=(0, 0, 0, 255))
+        
+    img_width, img_height = img.size
     draw = ImageDraw.Draw(img)
 
-    # 3. Xử lý Avatar
-    member_avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
-    avatar_img, avatar_raw_bytes = await _get_and_process_avatar(member_avatar_url, AVATAR_SIZE, avatar_cache)
+    # Tính toán offset bóng đổ dựa trên kích thước ảnh (khoảng 0.5% của chiều rộng/chiều cao)
+    shadow_offset_x = int(img_width * 0.005)
+    shadow_offset_y = int(img_height * 0.005)
 
-    # Vị trí avatar (căn giữa theo chiều ngang, vị trí y cố định)
-    avatar_x = (img.width - AVATAR_SIZE) // 2
-    avatar_y = 70
+    # 3. Lấy và xử lý Avatar (Đã được cắt tròn nhờ mask được tải trước)
+    avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
+    avatar_img, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
 
-    # Bắt đầu chỉnh sửa: Tạo một lỗ trong suốt hình tròn trên ảnh nền tại vị trí avatar
-    # Tạo một mask alpha mới cho ảnh nền
-    alpha_mask_for_background = Image.new('L', img.size, 255) # Bắt đầu với mask trắng (hoàn toàn đục)
-    draw_alpha_mask = ImageDraw.Draw(alpha_mask_for_background)
-    
-    # Vẽ một hình tròn đen (giá trị 0 trong L-mode) trên mask tại vị trí avatar.
-    # Giá trị 0 trong alpha mask có nghĩa là trong suốt hoàn toàn.
-    draw_alpha_mask.ellipse((avatar_x, avatar_y, avatar_x + AVATAR_SIZE, avatar_y + AVATAR_SIZE), fill=0)
-    
-    # Áp dụng mask alpha này vào kênh alpha của ảnh nền chính (img).
-    # Điều này sẽ làm cho khu vực hình tròn trên ảnh nền trở nên trong suốt.
-    img.putalpha(alpha_mask_for_background) #
+    # Xác định màu chủ đạo từ avatar
+    dominant_color_from_avatar = None
+    if avatar_bytes:
+        dominant_color_from_avatar = await get_dominant_color(avatar_bytes, color_count=20)
+    if dominant_color_from_avatar is None:
+        dominant_color_from_avatar = (0, 252, 233) # Default Cyan (màu mặc định nếu không lấy được)
 
-    # Dán avatar lên ảnh nền đã có lỗ trong suốt
-    # Việc dán với chính avatar_img làm mask sẽ đảm bảo độ trong suốt của avatar được giữ nguyên.
-    img.paste(avatar_img, (avatar_x, avatar_y), avatar_img) #
-    
-    # 4. Lấy màu chủ đạo từ avatar và điều chỉnh
-    # Sử dụng avatar_raw_bytes để lấy màu từ ảnh gốc tải về, tránh các vấn đề về mask làm ảnh hưởng màu
-    # Nếu avatar_raw_bytes không tồn tại (lỗi tải về), dùng avatar_img
-    if avatar_raw_bytes:
-        dominant_color_rgb = await get_dominant_color(avatar_raw_bytes)
+    # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo được chọn
+    stroke_color_rgb = adjust_color_brightness_saturation(
+        dominant_color_from_avatar,
+        brightness_factor=1.1, # Giảm nhẹ độ sáng để cho phép màu đậm hơn
+        saturation_factor=3.0,  # Có thể giảm một chút nếu 4.6 quá mạnh, hoặc giữ nếu muốn cực kỳ rực rỡ
+        clamp_min_l=0.2,       # **Rất quan trọng: Giảm đáng kể giới hạn dưới của độ sáng.**
+                               # Điều này cho phép màu có thể tối hơn, giữ lại độ đậm.
+        clamp_max_l=0.85        # Giảm nhẹ giới hạn trên để tránh màu quá sáng, mất sắc độ
+    )
+    stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên (thêm alpha 255)
+
+    # 4. Tính toán vị trí Avatar và các phần tử
+    avatar_x = int(img_width / 2 - AVATAR_SIZE / 2)
+    avatar_y = int(img_height * 0.36) - AVATAR_SIZE // 2
+    y_offset_from_avatar = 20
+    welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar)
+
+    # --- 5. Dán ảnh stroke PNG đã tô màu (sử dụng GLOBAL_STROKE_OVERLAY_IMAGE) ---
+    if GLOBAL_STROKE_OVERLAY_IMAGE:
+        # Tạo một ảnh mới có cùng kích thước với stroke_overlay_img và màu sắc stroke_color_rgb
+        tint_layer = Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, (*stroke_color_rgb, 255))
+
+        # Kết hợp tint_layer với kênh alpha của GLOBAL_STROKE_OVERLAY_IMAGE
+        final_stroke_layer = Image.composite(tint_layer, Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, (0,0,0,0)), GLOBAL_STROKE_OVERLAY_IMAGE)
+        
+        # Dán ảnh stroke đã tô màu lên ảnh nền chính tại vị trí (0,0)
+        img.paste(final_stroke_layer, (0, 0), final_stroke_layer)
     else:
-        # Fallback nếu không có avatar_raw_bytes
-        # Tạo BytesIO từ avatar_img nếu nó đã được xử lý (ví dụ, có màu xám mặc định)
-        temp_io_for_colorthief = io.BytesIO()
-        avatar_img.save(temp_io_for_colorthief, format='PNG')
-        temp_io_for_colorthief.seek(0)
-        dominant_color_rgb = await get_dominant_color(temp_io_for_colorthief.getvalue())
+        print(f"CẢNH BÁO: Không có ảnh stroke overlay được tải trước. Sẽ bỏ qua stroke này.")
 
-    # Điều chỉnh màu chủ đạo: tăng độ sáng và bão hòa để phù hợp với văn bản
-    adjusted_dominant_color = adjust_color_brightness_saturation(
-        dominant_color_rgb,
-        brightness_factor=1.1, # Tăng sáng một chút
-        saturation_factor=1.1, # Tăng bão hòa một chút
-        clamp_min_l=0.3, # Đảm bảo không quá tối
-        clamp_max_l=0.9 # Đảm bảo không quá chói
+    # --- 6. Dán Avatar (đã được cắt tròn bởi mask trong _get_and_process_avatar) ---
+    img.paste(avatar_img, (avatar_x, avatar_y), avatar_img)
+
+
+    # 7. Vẽ chữ WELCOME
+    welcome_text = "WELCOME"
+    welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
+    welcome_text_x = int((img_width - welcome_text_width) / 2)
+    
+    # Tạo màu đổ bóng cho chữ WELCOME
+    shadow_color_welcome_rgb = adjust_color_brightness_saturation(
+        dominant_color_from_avatar,
+        brightness_factor=0.5,
+        saturation_factor=2.5,
+        clamp_min_l=0.25,
+        clamp_max_l=0.55
+    )
+    _draw_text_with_shadow(
+        draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
+        (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
     )
 
-    # Nếu màu điều chỉnh quá tối, sử dụng màu sáng mặc định an toàn
-    if is_dark_color(adjusted_dominant_color, lightness_threshold=0.3):
-        text_color = (255, 255, 255) # Trắng
-        line_color = (0, 252, 233) # Cyan mặc định
-    else:
-        text_color = adjusted_dominant_color
-        line_color = adjusted_dominant_color
-
-    # 5. Thêm văn bản "WELCOME"
-    welcome_text = "WELCOME"
-    welcome_text_width = _get_text_width(welcome_text, font_welcome, draw)
-    welcome_x = (img.width - welcome_text_width) // 2
-    welcome_y = avatar_y + AVATAR_SIZE + 20 # Dưới avatar một khoảng
-
-    _draw_text_with_shadow(draw, welcome_text, font_welcome, welcome_x, welcome_y,
-                           text_color, (0, 0, 0, 150), 2, 2) # Bóng đen nhẹ
-
-    # 6. Thêm tên người dùng
-    display_name = member.display_name
-
-    # Xử lý tên người dùng để hiển thị ký tự đặc biệt
-    processed_name_parts, name_text_total_width = process_text_for_drawing(display_name, font_name, font_symbol, temp_draw_obj=draw)
-
-    name_x = (img.width - name_text_total_width) // 2
-    name_y = welcome_y + WELCOME_FONT_SIZE + 5 # Dưới WELCOME một khoảng
-
-    current_x = name_x
-    for char, font_to_use in processed_name_parts:
-        _draw_text_with_shadow(draw, char, font_to_use, current_x, name_y,
-                               text_color, (0, 0, 0, 150), 2, 2)
-        current_x += _get_text_width(char, font_to_use, draw)
-
-    # 7. Thêm số lượng thành viên (nếu có thể lấy được)
-    guild_member_count = member.guild.member_count if member.guild else None
-    if guild_member_count:
-        member_count_text = f"YOU ARE MEMBER #{guild_member_count}"
-        member_count_text_width = _get_text_width(member_count_text, font_name, draw) # Dùng font_name
-        member_count_x = (img.width - member_count_text_width) // 2
-        member_count_y = name_y + NAME_FONT_SIZE + 5 # Dưới tên một khoảng
-        _draw_text_with_shadow(draw, member_count_text, font_name, member_count_x, member_count_y,
-                               text_color, (0, 0, 0, 150), 2, 2)
-
-    # 8. Thêm đường line trang trí bên dưới tên (hoặc bên dưới member count nếu có)
-    line_y = (member_count_y + NAME_FONT_SIZE + LINE_VERTICAL_OFFSET_FROM_NAME) if guild_member_count else (name_y + NAME_FONT_SIZE + LINE_VERTICAL_OFFSET_FROM_NAME)
-    actual_line_length = name_text_total_width * LINE_LENGTH_FACTOR
-    _draw_simple_decorative_line(draw, img.width, line_y, line_color, actual_line_length)
+    # 8. Vẽ tên người dùng
+    name_text_raw = member.display_name
+    # Tạo một đối tượng draw tạm thời cho hàm process_text_for_drawing
+    temp_draw_for_text_calc = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
+    processed_name_parts, name_text_width = process_text_for_drawing(
+        name_text_raw, font_name, font_symbol, replacement_char='✦', temp_draw_obj=temp_draw_for_text_calc
+    )
     
-    # 9. Dán ảnh stroke overlay (nếu có)
-    if GLOBAL_STROKE_OVERLAY_IMAGE:
-        img.paste(GLOBAL_STROKE_OVERLAY_IMAGE, (0, 0), GLOBAL_STROKE_OVERLAY_IMAGE)
+    # Cắt bớt tên nếu quá dài (sau khi xử lý các ký tự đặc biệt)
+    max_chars_for_name = 25 # Đây chỉ là giới hạn gợi ý, có thể tên vẫn dài hơn
+    if name_text_width > img_width * 0.8: # Nếu độ rộng tên vượt quá 80% ảnh
+        # Ước tính số ký tự cần cắt bỏ, không quá chính xác nhưng đủ để tránh tràn
+        avg_char_width = name_text_width / len(processed_name_parts) if processed_name_parts else 1
+        chars_to_remove = int((name_text_width - img_width * 0.8) / avg_char_width) + 3 # +3 cho dấu "..."
+        if len(processed_name_parts) > chars_to_remove and len(processed_name_parts) > 3: # Đảm bảo còn lại ít nhất 3 ký tự
+            processed_name_parts = processed_name_parts[:-chars_to_remove]
+            processed_name_parts.append(('...', font_name)) # Thêm dấu chấm lửng
+            # Tính lại chiều rộng tên sau khi cắt
+            name_text_width = 0
+            for char, font_to_use in processed_name_parts:
+                name_text_width += temp_draw_for_text_calc.textlength(char, font=font_to_use)
 
-    # 10. Chuyển đổi sang bytes và trả về
+
+    name_text_x = int((img_width - name_text_width) / 2)
+    welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
+    welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
+    name_text_y = int(welcome_text_y_pos + welcome_actual_height + 10)
+
+    # Tạo màu đổ bóng cho chữ tên
+    shadow_color_name_rgb = adjust_color_brightness_saturation(
+        dominant_color_from_avatar,
+        brightness_factor=0.5,
+        saturation_factor=2.5,
+        clamp_min_l=0.25,
+        clamp_max_l=0.55
+    )
+    shadow_color_name = (*shadow_color_name_rgb, 255)
+
+    # Vẽ tên người dùng từng phần (từng ký tự với font tương ứng)
+    current_x = float(name_text_x)
+    for char, font_to_use in processed_name_parts:
+        draw.text((int(current_x + shadow_offset_x), int(name_text_y + shadow_offset_y)), char, font=font_to_use, fill=shadow_color_name)
+        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color)
+        
+        current_x += draw.textlength(char, font=font_to_use)
+
+    # 9. Vẽ thanh line trang trí
+    name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự mẫu để ước tính
+    
+    line_y = int(name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME)
+
+    line_color_rgb = stroke_color_rgb
+
+    # Tính toán độ dài line thực tế dựa trên độ dài tên và LINE_LENGTH_FACTOR
+    actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
+
+    _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb, actual_line_length)
+
+    # 10. Lưu ảnh và trả về
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
-    return img_byte_arr.getvalue()
+    return img_byte_arr
+
+# --- Các tác vụ của bot ---
+@tasks.loop(minutes=1)
+async def activity_heartbeat():
+    sleep_duration = random.randint(1 * 60, 3 * 60)
+    print(
+        f"DEBUG: Tác vụ activity_heartbeat đang ngủ {sleep_duration // 60} phút để chuẩn bị cập nhật trạng thái..."
+    )
+    await asyncio.sleep(sleep_duration)
+
+    activities = [
+        discord.Activity(type=discord.ActivityType.watching,
+                         name=f"Dawn_wibu phá đảo tựa game mới "),
+        discord.Activity(type=discord.ActivityType.listening,
+                         name=f"Bài TRÌNH "),
+        discord.Activity(type=discord.ActivityType.playing,
+                         name=f"Minecraft cùng Anh Em "),
+    ]
+
+    try:
+        new_activity = random.choice(activities)
+        await bot.change_presence(activity=new_activity)
+        print(
+            f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name})."
+        )
+
+    except Exception as e:
+        print(
+            f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
+
+@activity_heartbeat.before_loop
+async def before_activity_heartbeat():
+    await bot.wait_until_ready()
+    print("DEBUG: activity_heartbeat task chờ bot sẵn sàng.")
+
+CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971 # Đảm bảo đây là ID kênh hợp lệ của bạn
+
+RANDOM_MESSAGES = [
+    "Chào mọi người! ✨ Chúc một ngày tốt lành!",
+    "Đang online đây! Có ai cần gì không? 🤖",
+    "Thế giới thật tươi đẹp phải không? 💖",
+    "Gửi chút năng lượng tích cực đến tất cả! 💪",
+    "Đừng quên thư giãn nhé! 😌",
+    "Tôi là bot thông minh nhất quả đất! 💡",
+    "Ngày mới năng động nha mọi người! 🚀",
+    "Có câu hỏi khó nào cần tôi giải đáp không? 🧠"
+]
+
+@tasks.loop(minutes=1)
+async def random_message_sender():
+    send_interval = random.randint(2 * 60, 5 * 60)
+    print(f"DEBUG: Tác vụ random_message_sender sẽ gửi tin nhắn sau {send_interval // 60} phút.")
+    await asyncio.sleep(send_interval)
+
+    channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
+    if channel:
+        if isinstance(channel, discord.TextChannel):
+            if channel.permissions_for(channel.guild.me).send_messages:
+                message_to_send = random.choice(RANDOM_MESSAGES)
+                try:
+                    await channel.send(message_to_send)
+                    print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{message_to_send}' vào kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+                except discord.errors.Forbidden:
+                    print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+                except Exception as e:
+                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
+            else:
+                print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+        else:
+            print(f"LỖI KÊNH: Kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES} không phải là kênh văn bản.")
+    else:
+        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}. Vui lòng kiểm tra lại ID hoặc bot chưa có quyền truy cập kênh đó.")
+
+@random_message_sender.before_loop
+async def before_random_message_sender():
+    await bot.wait_until_ready()
+    print("DEBUG: random_message_sender task chờ bot sẵn sàng.")
+
+# --- Các sự kiện của bot ---
+@bot.event
+async def on_ready():
+    """Xử lý sự kiện khi bot sẵn sàng."""
+    print(f'{bot.user} đã sẵn sàng! 🎉')
+    print('Bot đã online và có thể hoạt động.')
+    try:
+        synced = await bot.tree.sync()
+        print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
+    except Exception as e:
+        print(
+            f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
+        )
+
+    # Tải tất cả các tài nguyên tĩnh khi bot sẵn sàng (chỉ một lần)
+    _load_static_assets()
+    print("DEBUG: Đã tải tất cả tài nguyên tĩnh khi bot sẵn sàng.")
+
+    if not activity_heartbeat.is_running():
+        activity_heartbeat.start()
+        print("DEBUG: Đã bắt đầu tác vụ thay đổi trạng thái để giữ hoạt động.")
+
+    if not random_message_sender.is_running():
+        random_message_sender.start()
+        print("DEBUG: Đã bắt đầu tác vụ gửi tin nhắn định kỳ.")
+
+
+@bot.event
+async def on_member_join(member):
+    channel_id = 1322848542758277202 # Đảm bảo đây là ID kênh chào mừng hợp lệ của bạn
+
+    channel = bot.get_channel(channel_id)
+
+    if channel is None:
+        print(
+            f"LỖI KÊNH: Không tìm thấy kênh với ID {channel_id}. Vui lòng kiểm tra lại ID kênh hoặc bot chưa có quyền truy cập kênh đó."
+        )
+        return
+
+    if not channel.permissions_for(member.guild.me).send_messages or \
+       not channel.permissions_for(member.guild.me).attach_files:
+        print(
+            f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn hoặc đính kèm file trong kênh {channel.name} (ID: {channel_id}). Vui lòng kiểm tra lại quyền của bot trong Discord."
+        )
+        return
+
+    try:
+        print(f"DEBUG: Đang tạo ảnh chào mừng cho {member.display_name}...")
+        image_bytes = await create_welcome_image(member)
+        await channel.send(
+            f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
+            file=discord.File(fp=image_bytes, filename='welcome.png'))
+        print(f"Đã gửi ảnh chào mừng thành công cho {member.display_name}!")
+    except discord.errors.HTTPException as e:
+        print(
+            f"LỖI HTTP DISCORD: Lỗi khi gửi ảnh chào mừng (có thể do giới hạn tốc độ hoặc quyền): {e}"
+        )
+        await channel.send(
+            f"Chào mừng {member.mention} đã đến với {member.guild.name}! (Có lỗi khi tạo ảnh chào mừng, xin lỗi!)"
+        )
+    except Exception as e:
+        print(f"LỖỖI CHÀO MỪNG KHÁC: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
+        await channel.send(
+            f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
 # --- Slash Command để TEST tạo ảnh welcome ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
@@ -568,7 +735,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
         image_bytes = await create_welcome_image(member_to_test)
-        await interaction.followup.send(file=discord.File(fp=io.BytesIO(image_bytes), filename='welcome_test.png'))
+        await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
         print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
@@ -578,7 +745,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>" 
+        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
     )
 
 # --- Khởi chạy Flask và Bot Discord ---
@@ -614,8 +781,6 @@ async def start_bot_and_flask():
         print(f"Một lỗi không xác định đã xảy ra: {e}")
 
 if __name__ == '__main__':
-    # Tải các tài nguyên tĩnh một lần khi khởi động chương trình (trước khi bot start)
-    # _load_static_assets() # Đã chuyển vào on_ready để đảm bảo bot đã kết nối trước khi tải fonts/ảnh
     if not TOKEN:
         print(
             "Lỗi: TOKEN không được tìm thấy. Vui lòng thiết lập biến môi trường 'DISCORD_BOT_TOKEN' hoặc 'TOKEN'."
