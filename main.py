@@ -60,9 +60,23 @@ TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Hoặc TOKEN = os.getenv('TOKEN') nếu
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
-intents.presences = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+
+# --- Event: Bot đã sẵn sàng ---
+@bot.event
+async def on_ready():
+    print(f'Bot đã đăng nhập với tên: {bot.user}')
+    print('Đang đồng bộ hóa các lệnh slash...')
+    try:
+        synced = await bot.tree.sync()
+        print(f"Đã đồng bộ hóa {len(synced)} lệnh.")
+    except Exception as e:
+        print(f"LỖI: Không thể đồng bộ hóa lệnh slash: {e}")
+    # Đảm bảo các tài nguyên tĩnh được tải sau khi bot ready
+    _load_static_assets()
+    print("Các tài nguyên tĩnh đã được tải.")
+
 
 # --- Các hàm xử lý màu sắc (giữ nguyên logic phức tạp của bạn) ---
 def rgb_to_hsl(r, g, b):
@@ -564,7 +578,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>" # Đã thêm ✦ vào đây
+        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>" 
     )
 
 # --- Khởi chạy Flask và Bot Discord ---
@@ -600,8 +614,8 @@ async def start_bot_and_flask():
         print(f"Một lỗi không xác định đã xảy ra: {e}")
 
 if __name__ == '__main__':
-    # Tải các tài nguyên tĩnh một lần khi khởi động chương trình
-    _load_static_assets()
+    # Tải các tài nguyên tĩnh một lần khi khởi động chương trình (trước khi bot start)
+    # _load_static_assets() # Đã chuyển vào on_ready để đảm bảo bot đã kết nối trước khi tải fonts/ảnh
     if not TOKEN:
         print(
             "Lỗi: TOKEN không được tìm thấy. Vui lòng thiết lập biến môi trường 'DISCORD_BOT_TOKEN' hoặc 'TOKEN'."
