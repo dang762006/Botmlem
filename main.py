@@ -48,7 +48,7 @@ def run_flask():
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
 
-    threading.Timer(10, send_self_ping).start()
+    threading.Timer(10, send_self_ping).start() # Bắt đầu tự ping sau 10 giây khởi động Flask
     print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
 
     app.run(host='0.0.0.0', port=port,
@@ -64,7 +64,7 @@ intents.presences = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# --- Các hàm xử lý màu sắc ---
+# --- Các hàm xử lý màu sắc (giữ nguyên logic phức tạp của bạn) ---
 def rgb_to_hsl(r, g, b):
     r /= 255.0
     g /= 255.0
@@ -133,7 +133,7 @@ def adjust_color_brightness_saturation(rgb_color,
 
     return hsl_to_rgb(h, s, l)
 
-async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng màu để có nhiều lựa chọn hơn
+async def get_dominant_color(image_bytes, color_count=20):
     try:
         f = io.BytesIO(image_bytes)
         img_temp = Image.open(f).convert("RGB")
@@ -144,27 +144,16 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
         color_thief = ColorThief(f_temp)
         palette = color_thief.get_palette(color_count=color_count, quality=1)
 
-        # Danh sách để lưu các màu đủ tiêu chuẩn, kèm theo điểm số và thứ tự ưu tiên sắc độ
         qualified_colors = []
 
-        # Định nghĩa ngưỡng và thứ tự ưu tiên sắc độ (Hue)
-        # H (0-1): Đỏ(~0), Cam(~0.08), Vàng(~0.16), Lục(~0.33), Cyan(~0.5), Lam(~0.66), Tím(~0.83), Magenta(~0.9)
-        HUE_PRIORITY_ORDER = [
-            (0.75, 0.95),  # Tím/Magenta
-            (0.40, 0.75),  # Xanh Dương/Xanh Da Trời (Blue/Cyan)
-            (0.18, 0.40),  # Xanh Lá (Green)
-            (0.00, 0.18),  # Đỏ/Cam/Vàng (Red wraps around 0/1)
-            (0.95, 1.00)   # Đỏ (phần còn lại của đỏ)
-        ]
-        
         def get_hue_priority_index(h_value):
             # Hàm này sẽ trả về index ưu tiên sắc độ
-            # Index càng nhỏ -> ưu tiên càng cao
+            # Index càng nhỏ -> ưu tiên càng cao (Tím/Magenta > Xanh > Xanh Lá > Ấm)
             if 0.75 <= h_value < 0.95: return 0  # Tím/Magenta
             if 0.40 <= h_value < 0.75: return 1  # Xanh Dương/Xanh Da Trời
             if 0.18 <= h_value < 0.40: return 2  # Xanh Lá
             
-            # Xử lý màu ấm (đỏ, cam, vàng)
+            # Xử lý màu ấm (đỏ, cam, vàng) - hue 0-0.18 và 0.95-1.0
             if (0.00 <= h_value < 0.18) or (0.95 <= h_value <= 1.00): return 3 # Đỏ/Cam/Vàng
             
             return 99 # Giá trị lớn cho các màu không thuộc nhóm ưu tiên
@@ -173,24 +162,16 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
             r, g, b = color_rgb
             h, s, l = rgb_to_hsl(r, g, b)
 
-            # --- TIÊU CHÍ LỰA CHỌN MÀU SẮC DỰA TRÊN VÙNG KHOANH ĐỎ TRONG PHOTOSHOP ---
-            # Vùng khoanh đỏ: Nửa trên bên phải, tránh trắng tinh và đen/xám tối.
-            # 1. Loại bỏ các màu quá tối hoặc quá xám xịt (ngoài vùng mong muốn)
-            # Dựa trên hình ảnh, L thấp (dưới 0.5) hoặc S quá thấp (dưới 0.25) thì loại bỏ trừ trường hợp xám sáng
-            if l < 0.5 and s < 0.25: # Nếu quá tối và ít bão hòa
-                continue
-
-            # 2. Hạn chế màu trắng/rất nhạt (phía trên cùng hình vuông)
-            if l > 0.90: # Nếu quá gần trắng tinh (L > 90%) - Đã sửa từ 0.95
+            # Tiêu chí loại bỏ màu quá tối, quá xám, hoặc quá trắng
+            if (l < 0.5 and s < 0.25) or (l > 0.90):
                 continue
             
-            # 3. Phân loại màu: Rực rỡ & Sáng (Ưu tiên 1) vs Xám Sáng (Ưu tiên 2)
-            is_vibrant_and_bright = (l >= 0.5 and s > 0.4) # Màu trong vùng khoanh đỏ chính
-            is_bright_grayish = (l >= 0.6 and s >= 0.25 and s <= 0.4) # Tiêu chí "xám sáng" của bạn
+            # Phân loại màu: Rực rỡ & Sáng (Ưu tiên 1) vs Xám Sáng (Ưu tiên 2)
+            is_vibrant_and_bright = (l >= 0.5 and s > 0.4)
+            is_bright_grayish = (l >= 0.6 and s >= 0.25 and s <= 0.4)
 
             if is_vibrant_and_bright:
-                # Tính điểm: Ưu tiên cả bão hòa và sáng cao
-                score = s * l
+                score = s * l # Ưu tiên cả bão hòa và sáng cao
                 qualified_colors.append({
                     'color': color_rgb,
                     'score': score,
@@ -198,7 +179,6 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
                     'hue_priority': get_hue_priority_index(h)
                 })
             elif is_bright_grayish:
-                # Điểm thấp hơn cho xám sáng, ưu tiên sáng hơn
                 score = l * 0.5 + s * 0.5 # Điểm cân bằng hơn cho xám sáng
                 qualified_colors.append({
                     'color': color_rgb,
@@ -206,14 +186,10 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
                     'type': 'bright_grayish',
                     'hue_priority': 98 # Ưu tiên thấp hơn màu rực rỡ
                 })
-            # Các màu còn lại không được thêm vào qualified_colors và sẽ không được chọn trừ khi không còn lựa chọn nào.
             
-        # Sắp xếp các màu đủ điều kiện
-        # Ưu tiên 1: loại 'vibrant_bright' trước 'bright_grayish'
-        # Ưu tiên 2: điểm số (score) từ cao đến thấp
-        # Ưu tiên 3: thứ tự sắc độ (hue_priority) từ thấp đến cao (Tím -> Xanh -> Ấm)
+        # Sắp xếp các màu đủ điều kiện theo ưu tiên
         qualified_colors.sort(key=lambda x: (
-            0 if x['type'] == 'vibrant_bright' else 1, # Loại màu (0 là rực rỡ, 1 là xám sáng)
+            0 if x['type'] == 'vibrant_bright' else 1, # Loại màu (ưu tiên rực rỡ)
             -x['score'], # Điểm số (giảm dần)
             x['hue_priority'] # Thứ tự sắc độ (tăng dần)
         ))
@@ -221,15 +197,12 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
         if qualified_colors:
             return qualified_colors[0]['color'] # Chọn màu ưu tiên nhất
         else:
-            # Fallback nếu không tìm thấy màu nào thỏa mãn
-            # Trong trường hợp avatar quá tối hoặc quá trắng/xám xịt
-            # Vẫn cố gắng tìm màu sáng nhất trong toàn bộ palette
+            # Fallback: cố gắng tìm màu sáng nhất trong toàn bộ palette (trừ màu đen kịt)
             best_fallback_color = (0, 252, 233) # Default Cyan
             max_l_fallback = -1
             for color in palette:
-                _, _, l = rgb_to_hsl(*color)
-                # Chỉ loại bỏ màu cực tối hoàn toàn (đen kịt)
-                if not (color[0] < 30 and color[1] < 30 and color[2] < 30):
+                if not (color[0] < 30 and color[1] < 30 and color[2] < 30): # Loại bỏ màu đen kịt
+                    _, _, l = rgb_to_hsl(*color)
                     if l > max_l_fallback:
                         max_l_fallback = l
                         best_fallback_color = color
@@ -240,29 +213,28 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
         return (0, 252, 233) # Default Cyan (màu mặc định an toàn, sáng)
 
 avatar_cache = {}
-CACHE_TTL = 300
+CACHE_TTL = 300 # Thời gian sống của cache avatar (giây)
 
 # --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
-FONT_MAIN_PATH = "1FTV-Designer.otf" # Font chính cho chữ
-FONT_SYMBOL_PATH = "subset-DejaVuSans.ttf" # Font cho các ký tự đặc biệt/biểu tượng
+FONT_MAIN_PATH = "1FTV-Designer.otf"
+FONT_SYMBOL_PATH = "subset-DejaVuSans.ttf"
 WELCOME_FONT_SIZE = 60
 NAME_FONT_SIZE = 34
-AVATAR_SIZE = 210
+AVATAR_SIZE = 210 # Kích thước avatar sau khi resize
 BACKGROUND_IMAGE_PATH = "welcome.png"
-STROKE_IMAGE_PATH = "stroke.png" # ĐƯỜNG DẪN MỚI CHO ẢNH STROKE
-AVATAR_MASK_IMAGE_PATH = "avatar.png" # ĐƯỜNG DẪN MỚI CHO ẢNH MASK AVATAR
-DEFAULT_IMAGE_DIMENSIONS = (872, 430)
-LINE_THICKNESS = 3 # CẬP NHẬT ĐỘ DÀY LINE
+STROKE_IMAGE_PATH = "stroke.png"
+AVATAR_MASK_IMAGE_PATH = "avatar.png" # File mask hình tròn cho avatar
+DEFAULT_IMAGE_DIMENSIONS = (872, 430) # Kích thước ảnh nền mặc định
+LINE_THICKNESS = 3 # Độ dày của line dưới tên
 LINE_VERTICAL_OFFSET_FROM_NAME = 13 # Khoảng cách từ tên đến đường line
-LINE_LENGTH_FACTOR = 0.70 # Tỷ lệ độ dài của line so với độ dài của tên (70%)
+LINE_LENGTH_FACTOR = 0.70 # Tỷ lệ độ dài của line so với độ dài của tên
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
 def _load_fonts(main_path, symbol_path):
-    """Tải font chính và font biểu tượng, có fallback."""
+    """Tải font chính và font biểu tượng, có fallback nếu không tìm thấy font."""
     font_welcome, font_name, font_symbol = None, None, None
 
-    # Tải font chính
     try:
         font_welcome = ImageFont.truetype(main_path, WELCOME_FONT_SIZE)
         font_name = ImageFont.truetype(main_path, NAME_FONT_SIZE)
@@ -278,7 +250,6 @@ def _load_fonts(main_path, symbol_path):
             font_name = ImageFont.load_default().font_variant(size=NAME_FONT_SIZE)
             print("DEBUG: Đã sử dụng font mặc định của Pillow cho văn bản chính.")
     
-    # Tải font biểu tượng
     try:
         font_symbol = ImageFont.truetype(symbol_path, NAME_FONT_SIZE) # Kích thước tương tự font tên
         print(f"DEBUG: Đã tải font biểu tượng thành công: {symbol_path}")
@@ -290,7 +261,7 @@ def _load_fonts(main_path, symbol_path):
     return font_welcome, font_name, font_symbol
 
 def _load_background_image(path, default_dims):
-    """Tải ảnh nền, hoặc tạo ảnh nền mặc định nếu không tìm thấy."""
+    """Tải ảnh nền, hoặc tạo ảnh nền mặc định nếu không tìm thấy file."""
     try:
         img = Image.open(path).convert("RGBA")
         print(f"DEBUG: Đã tải ảnh nền: {path} với kích thước {img.size[0]}x{img.size[1]}")
@@ -303,17 +274,23 @@ def _load_background_image(path, default_dims):
     return img
 
 def _load_stroke_overlay_image(path, default_dims):
-    """Tải ảnh stroke overlay (viền avatar) từ file PNG."""
+    """
+    Tải ảnh stroke overlay (viền avatar) từ file PNG.
+    Sẽ resize ảnh stroke để khớp với kích thước ảnh nền nếu cần.
+    """
     try:
         img = Image.open(path).convert("RGBA")
-        # Kiểm tra kích thước, cảnh báo nếu không khớp background
+        
         if img.size != default_dims:
-            print(f"CẢNH BÁO: Ảnh stroke overlay '{path}' có kích thước {img.size} khác với ảnh nền {default_dims}. Có thể gây lệch vị trí.")
+            print(f"CẢNH BÁO: Ảnh stroke overlay '{path}' có kích thước {img.size} khác với ảnh nền {default_dims}. Sẽ resize ảnh stroke.")
+            img = img.resize(default_dims, Image.LANCZOS) # Resize để khớp với kích thước ảnh nền
+            print(f"DEBUG: Ảnh stroke đã được resize về {img.size[0]}x{img.size[1]}.")
+
         print(f"DEBUG: Đã tải ảnh stroke overlay: {path} với kích thước {img.size[0]}x{img.size[1]}")
         return img
     except FileNotFoundError:
         print(f"LỖI STROKE: Không tìm thấy ảnh stroke overlay '{path}'. Sẽ bỏ qua stroke này.")
-        return None # Trả về None nếu không tìm thấy
+        return None
     except Exception as e:
         print(f"LỖỖI STROKE: Lỗi khi mở ảnh stroke overlay: {e}. Sẽ bỏ qua stroke này.")
         return None
@@ -322,66 +299,66 @@ def _load_stroke_overlay_image(path, default_dims):
 async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
     """Tải và xử lý avatar, có dùng cache và áp dụng mask tròn."""
     avatar_bytes = None
+    # Kiểm tra cache
     if member_avatar_url in cache and (asyncio.get_event_loop().time() - cache[member_avatar_url]['timestamp']) < CACHE_TTL:
         avatar_bytes = cache[member_avatar_url]['data']
         print(f"DEBUG: Lấy avatar từ cache cho {member_avatar_url}.")
     else:
         print(f"DEBUG: Đang tải avatar từ URL: {member_avatar_url}")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(str(member_avatar_url)) as resp:
-                if resp.status != 200:
-                    print(f"LỖI AVATAR: Không thể tải avatar. Trạng thái: {resp.status}. Sử dụng avatar màu xám mặc định.")
-                else:
-                    avatar_bytes = await resp.read()
-                    cache[member_avatar_url] = {'data': avatar_bytes, 'timestamp': asyncio.get_event_loop().time()}
-                    print(f"DEBUG: Đã tải và lưu avatar vào cache.")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(str(member_avatar_url)) as resp:
+                    if resp.status == 200:
+                        avatar_bytes = await resp.read()
+                        cache[member_avatar_url] = {'data': avatar_bytes, 'timestamp': asyncio.get_event_loop().time()}
+                        print(f"DEBUG: Đã tải và lưu avatar vào cache.")
+                    else:
+                        print(f"LỖI AVATAR: Không thể tải avatar. Trạng thái HTTP: {resp.status}. Sử dụng avatar màu xám mặc định.")
+        except Exception as e:
+            print(f"LỖI AVATAR: Lỗi mạng khi tải avatar: {e}. Sử dụng avatar màu xám mặc định.")
 
+    # Mở ảnh avatar hoặc tạo ảnh mặc định nếu không tải được
     if avatar_bytes:
         data = io.BytesIO(avatar_bytes)
         avatar_img = Image.open(data).convert("RGBA")
     else:
         avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
 
+    # Resize avatar về kích thước mong muốn
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
 
-    # --- BỔ SUNG ĐOẠN CODE NÀY ĐỂ ÁP DỤNG MASK HÌNH TRÒN ---
+    # Áp dụng mask hình tròn
     try:
-        # Tải ảnh mask hình tròn
-        circular_mask_img = Image.open(AVATAR_MASK_IMAGE_PATH).convert("L") # Sử dụng hằng số
+        circular_mask_img = Image.open(AVATAR_MASK_IMAGE_PATH).convert("L")
 
         # Đảm bảo kích thước mask khớp với kích thước avatar đã resize
         if circular_mask_img.size != (avatar_size, avatar_size):
             print(f"CẢNH BÁO: Kích thước mask avatar '{AVATAR_MASK_IMAGE_PATH}' ({circular_mask_img.size}) không khớp với kích thước avatar ({avatar_size},{avatar_size}). Sẽ resize mask.")
             circular_mask_img = circular_mask_img.resize((avatar_size, avatar_size), Image.LANCZOS)
 
-        # Áp dụng mask cho avatar
-        # Kênh alpha của avatar_img sẽ được thay thế bằng mask này
+        # Áp dụng mask cho kênh alpha của avatar_img
         avatar_img.putalpha(circular_mask_img)
 
     except FileNotFoundError:
         print(f"LỖI MASK: Không tìm thấy file mask avatar '{AVATAR_MASK_IMAGE_PATH}'. Avatar sẽ không được cắt tròn.")
     except Exception as e:
         print(f"LỖI MASK: Lỗi khi áp dụng mask avatar: {e}. Avatar sẽ không được cắt tròn.")
-    # --- KẾT THÚC ĐOẠN CODE BỔ SUNG ---
 
     return avatar_img, avatar_bytes
 
-# --- HÀM _draw_circular_avatar_and_stroke BỊ LOẠI BỎ / THAY THẾ HOÀN TOÀN ---
-# Lý do: Logic vẽ viền và cắt tròn đã được thay thế bằng file PNG stroke và PNG mask.
-# Bạn có thể xóa hoàn toàn hàm này khỏi code của mình.
 
 def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color, offset_x, offset_y):
     """Vẽ văn bản với hiệu ứng đổ bóng đơn giản với offset tùy chỉnh."""
-    draw_obj.text((x + offset_x, y + offset_y), text, font=font, fill=shadow_color)
-    draw_obj.text((x, y), text, font=font, fill=main_color)
+    draw_obj.text((int(x + offset_x), int(y + offset_y)), text, font=font, fill=shadow_color)
+    draw_obj.text((int(x), int(y)), text, font=font, fill=main_color)
 
-def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb, actual_line_length): # Đã thay đổi tham số
-    """Vẽ thanh line đơn giản với độ dài tùy chỉnh."""
-    line_x1 = img_width // 2 - actual_line_length // 2 # Sử dụng actual_line_length
-    line_x2 = img_width // 2 + actual_line_length // 2 # Sử dụng actual_line_length
+def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb, actual_line_length):
+    """Vẽ thanh line đơn giản với độ dài tùy chỉnh, căn giữa."""
+    line_x1 = int(img_width / 2 - actual_line_length / 2)
+    line_x2 = int(img_width / 2 + actual_line_length / 2)
 
     draw_obj.line(
-        [(line_x1, line_y), (line_x2, line_y)],
+        [(line_x1, int(line_y)), (line_x2, int(line_y))],
         fill=line_color_rgb,
         width=LINE_THICKNESS
     )
@@ -390,55 +367,49 @@ def _get_text_width(text, font, draw_obj):
     """Tính toán chiều rộng của văn bản."""
     return draw_obj.textlength(text, font=font)
 
-
 def _get_text_height(text, font, draw_obj):
     """Tính toán chiều cao của văn bản."""
     bbox = draw_obj.textbbox((0, 0), text, font=font)
     return bbox[3] - bbox[1]
 
-
 def is_basic_char(char):
     """
     Kiểm tra xem một ký tự có phải là chữ cái (Tiếng Việt hoặc Latin), số hoặc dấu câu cơ bản không.
-    Bổ sung thêm các ký tự đặc biệt theo yêu cầu.
+    Bổ sung thêm các ký tự đặc biệt thường dùng.
     """
     if 'a' <= char <= 'z' or 'A' <= char <= 'Z':
         return True
     if '0' <= char <= '9':
         return True
-    # Các dấu câu cơ bản và một số ký tự đặc biệt thường thấy trong văn bản
-    # Bổ sung: _-+=<,>.?/:;"'|\~!@#$%^*()
-    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=@_|=~`!^*""" + '\\' # Thêm dấu cách và dấu \
-
-    if char in special_chars_to_keep or char.isspace(): # Ký tự trắng cũng là basic
+    
+    # Các dấu câu cơ bản và một số ký tự đặc biệt
+    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=@_|=~`!^*""" + '\\'
+    if char in special_chars_to_keep or char.isspace():
         return True
     
     # Hỗ trợ thêm các ký tự tiếng Việt có dấu
     unicode_ord = ord(char)
     if (0x00C0 <= unicode_ord <= 0x017F) or \
-       (0x1EA0 <= unicode_ord <= 0x1EFF): # Latin-1 Supplement và Vietnamese Characters
+       (0x1EA0 <= unicode_ord <= 0x1EFF):
         return True
     
     return False
 
-
 def process_text_for_drawing(original_text, main_font, symbol_font, replacement_char='✦'):
     """
     Xử lý văn bản để vẽ.
-    Các ký tự cơ bản (chữ cái, số, dấu câu, và các ký tự đặc biệt được định nghĩa) dùng main_font.
-    Các ký tự còn lại (ký hiệu, emoji, v.v.) dùng replacement_char với symbol_font.
+    Các ký tự cơ bản dùng main_font. Các ký tự không cơ bản dùng replacement_char với symbol_font.
     Trả về danh sách các (ký tự, font) và chiều rộng tổng cộng.
     """
     processed_parts = []
     total_width = 0
-    temp_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1))) # Đối tượng draw tạm thời
+    temp_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1))) # Đối tượng draw tạm thời để tính chiều rộng
 
     for char in original_text:
         if is_basic_char(char):
             processed_parts.append((char, main_font))
             total_width += temp_draw.textlength(char, font=main_font)
         else:
-            # Nếu không phải ký tự cơ bản, thay thế bằng replacement_char
             processed_parts.append((replacement_char, symbol_font))
             total_width += temp_draw.textlength(replacement_char, font=symbol_font)
     
@@ -458,68 +429,65 @@ async def create_welcome_image(member):
     shadow_offset_x = int(img_width * 0.005)
     shadow_offset_y = int(img_height * 0.005)
 
-    # 3. Lấy và xử lý Avatar (Đã được cắt tròn nhờ mask)
+    # 3. Lấy và xử lý Avatar (Đã được cắt tròn nhờ mask trong _get_and_process_avatar)
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     avatar_img, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
 
     # Xác định màu chủ đạo từ avatar
     dominant_color_from_avatar = None
     if avatar_bytes:
-        dominant_color_from_avatar = await get_dominant_color(avatar_bytes, color_count=20) # Tăng số lượng màu để lựa chọn
+        dominant_color_from_avatar = await get_dominant_color(avatar_bytes, color_count=20)
     if dominant_color_from_avatar is None:
-        dominant_color_from_avatar = (0, 252, 233) # Default Cyan (màu mặc định an toàn, sáng)
+        dominant_color_from_avatar = (0, 252, 233) # Mặc định Cyan nếu không lấy được màu
 
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo được chọn
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
-        brightness_factor=1.1,  # Tăng độ sáng
-        saturation_factor=2.6,  # Tăng độ bão hòa
-        clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
-        clamp_max_l=0.90        # Giới hạn độ sáng tối đa để không bị quá trắng
+        brightness_factor=1.1,
+        saturation_factor=2.6,
+        clamp_min_l=0.6,
+        clamp_max_l=0.90
     )
-    stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên
+    stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên (thêm alpha 255)
 
     # 4. Tính toán vị trí Avatar và các phần tử
-    avatar_x = img_width // 2 - AVATAR_SIZE // 2
-    avatar_y = int(img_height * 0.36) - AVATAR_SIZE // 2
+    avatar_x = int(img_width / 2 - AVATAR_SIZE / 2) # Ép kiểu int
+    avatar_y = int(img_height * 0.36) - AVATAR_SIZE // 2 # Ép kiểu int
     y_offset_from_avatar = 20
-    welcome_text_y_pos = avatar_y + AVATAR_SIZE + y_offset_from_avatar
+    welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar) # Ép kiểu int
 
     # --- 5. Dán ảnh stroke PNG đã tô màu ---
     stroke_overlay_img = _load_stroke_overlay_image(STROKE_IMAGE_PATH, img.size)
 
     if stroke_overlay_img:
         # Tạo một ảnh mới có cùng kích thước với stroke_overlay_img và màu sắc stroke_color_rgb
-        # Màu này sẽ là màu solid của stroke
         tint_layer = Image.new('RGBA', stroke_overlay_img.size, (*stroke_color_rgb, 255))
 
-        # Kết hợp tint_layer với alpha channel của stroke_overlay_img
-        # Để chỉ tô màu vào phần stroke, phần trong suốt vẫn trong suốt
+        # Kết hợp tint_layer với kênh alpha của stroke_overlay_img
         final_stroke_layer = Image.composite(tint_layer, Image.new('RGBA', stroke_overlay_img.size, (0,0,0,0)), stroke_overlay_img)
         
-        # Dán ảnh stroke đã tô màu lên ảnh nền chính
-        # Vị trí dán là (0,0) vì ảnh stroke overlay đã có cùng kích thước và vị trí đúng
+        # Dán ảnh stroke đã tô màu lên ảnh nền chính tại vị trí (0,0)
         img.paste(final_stroke_layer, (0, 0), final_stroke_layer)
 
     # --- 6. Dán Avatar (đã được cắt tròn bởi mask trong _get_and_process_avatar) ---
-    img.paste(avatar_img, (avatar_x, avatar_y), avatar_img) # Dán avatar_img trực tiếp (đã có alpha channel từ mask)
+    img.paste(avatar_img, (avatar_x, avatar_y), avatar_img)
 
 
     # 7. Vẽ chữ WELCOME
     welcome_text = "WELCOME"
     welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
-    welcome_text_x = int((img_width - welcome_text_width) / 2) # Đã thêm int()
+    welcome_text_x = int((img_width - welcome_text_width) / 2) # Ép kiểu int
     
-    # LÀM SÁNG BÓNG CỦA CHỮ WELCOME
+    # Tạo màu đổ bóng cho chữ WELCOME
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
-        brightness_factor=1.2, # Tăng nhẹ độ sáng của bóng WELCOME
-        saturation_factor=3.2, # Tăng nhẹ độ bão hòa để bóng có màu sắc hơn
-        clamp_min_l=0.25,      # Đảm bảo độ sáng tối thiểu cho bóng
-        clamp_max_l=0.55       # Giới hạn độ sáng tối đa để không bị quá trắng
+        brightness_factor=1.2,
+        saturation_factor=3.2,
+        clamp_min_l=0.25,
+        clamp_max_l=0.55
     )
     _draw_text_with_shadow(
-        draw, welcome_text, font_welcome, welcome_text_x, int(welcome_text_y_pos),
+        draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
         (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
     )
 
@@ -529,53 +497,57 @@ async def create_welcome_image(member):
         name_text_raw, font_name, font_symbol, replacement_char='✦'
     )
     
-    # Nếu tên sau khi lọc quá dài, có thể cắt bớt (đơn giản hóa vì đã xử lý từng phần)
-    max_chars_for_name = 25 # Ví dụ giới hạn
-    if len(name_text_raw) > max_chars_for_name:
-        name_text_raw = name_text_raw[:max_chars_for_name - 3] + "..."
-        processed_name_parts, name_text_width = process_text_for_drawing(
-            name_text_raw, font_name, font_symbol, replacement_char='✦'
-        )
+    # Cắt bớt tên nếu quá dài (sau khi xử lý các ký tự đặc biệt)
+    max_chars_for_name = 25
+    if name_text_width > img_width * 0.8: # Nếu độ rộng tên vượt quá 80% ảnh
+        # Ước tính số ký tự cần cắt bỏ, không quá chính xác nhưng đủ để tránh tràn
+        avg_char_width = name_text_width / len(processed_name_parts)
+        chars_to_remove = int((name_text_width - img_width * 0.8) / avg_char_width) + 3 # +3 cho dấu "..."
+        if len(processed_name_parts) > chars_to_remove:
+            processed_name_parts = processed_name_parts[:-chars_to_remove]
+            processed_name_parts.append(('...', font_name)) # Thêm dấu chấm lửng
+            # Tính lại chiều rộng tên sau khi cắt
+            name_text_width = 0
+            temp_draw_name = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
+            for char, font_to_use in processed_name_parts:
+                name_text_width += temp_draw_name.textlength(char, font=font_to_use)
 
 
-    name_text_x = int((img_width - name_text_width) / 2) # Đã thêm int()
+    name_text_x = int((img_width - name_text_width) / 2) # Ép kiểu int
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
-    name_text_y = welcome_text_y_pos + welcome_actual_height + 10 # Khoảng cách ban đầu
+    name_text_y = int(welcome_text_y_pos + welcome_actual_height + 10) # Ép kiểu int
 
-    # LÀM SÁNG BÓNG CỦA CHỮ TÊN (Cũng điều chỉnh saturation_factor)
+    # Tạo màu đổ bóng cho chữ tên
     shadow_color_name_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
-        brightness_factor=1.2, # Tăng nhẹ độ sáng của bóng tên
-        saturation_factor=3.2, # Tăng nhẹ độ bão hòa
-        clamp_min_l=0.25,      # Đảm bảo độ sáng tối thiểu cho bóng tên
-        clamp_max_l=0.55       # Giới hạn độ sáng tối đa
+        brightness_factor=1.2,
+        saturation_factor=3.2,
+        clamp_min_l=0.25,
+        clamp_max_l=0.55
     )
     shadow_color_name = (*shadow_color_name_rgb, 255)
 
     # Vẽ tên người dùng từng phần (từng ký tự với font tương ứng)
-    current_x = name_text_x # current_x bắt đầu là int
+    current_x = float(name_text_x) # Bắt đầu với float để cộng dồn chính xác, sau đó ép kiểu khi vẽ
     for char, font_to_use in processed_name_parts:
-        # Đảm bảo tất cả các tọa độ là số nguyên
-        shadow_x = current_x + shadow_offset_x
-        shadow_y = name_text_y + shadow_offset_y
-        draw.text((int(shadow_x), int(shadow_y)), char, font=font_to_use, fill=shadow_color_name) # Đã thêm int()
+        # Ép kiểu int tại thời điểm vẽ
+        draw.text((int(current_x + shadow_offset_x), int(name_text_y + shadow_offset_y)), char, font=font_to_use, fill=shadow_color_name)
+        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color)
         
-        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color) # Đã thêm int()
-        
-        current_x = int(current_x + draw.textlength(char, font=font_to_use)) # Đảm bảo current_x luôn là int sau mỗi lần cộng
+        current_x += draw.textlength(char, font=font_to_use)
 
     # 9. Vẽ thanh line trang trí
-    name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự mẫu
+    name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự mẫu để ước tính
     
-    line_y = name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME
+    line_y = int(name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME) # Ép kiểu int
 
     line_color_rgb = stroke_color_rgb
 
     # Tính toán độ dài line thực tế dựa trên độ dài tên và LINE_LENGTH_FACTOR
     actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
 
-    _draw_simple_decorative_line(draw, img_width, int(line_y), line_color_rgb, actual_line_length) # Đã thêm int()
+    _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb, actual_line_length)
 
     # 10. Lưu ảnh và trả về
     img_byte_arr = io.BytesIO()
@@ -583,7 +555,7 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- Các tác vụ của bot (đã chỉnh sửa để không sleep ở before_loop) ---
+# --- Các tác vụ của bot ---
 @tasks.loop(minutes=1)
 async def activity_heartbeat():
     sleep_duration = random.randint(1 * 60, 3 * 60)
@@ -614,11 +586,10 @@ async def activity_heartbeat():
 
 @activity_heartbeat.before_loop
 async def before_activity_heartbeat():
-    await bot.wait_until_ready() # Đảm bảo bot đã sẵn sàng trước khi chạy loop
+    await bot.wait_until_ready()
     print("DEBUG: activity_heartbeat task chờ bot sẵn sàng.")
 
-# --- Tác vụ gửi tin nhắn định kỳ ---
-CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971
+CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971 # Đảm bảo đây là ID kênh hợp lệ của bạn
 
 RANDOM_MESSAGES = [
     "Chào mọi người! ✨ Chúc một ngày tốt lành!",
@@ -658,7 +629,7 @@ async def random_message_sender():
 
 @random_message_sender.before_loop
 async def before_random_message_sender():
-    await bot.wait_until_ready() # Đảm bảo bot đã sẵn sàng trước khi chạy loop
+    await bot.wait_until_ready()
     print("DEBUG: random_message_sender task chờ bot sẵn sàng.")
 
 # --- Các sự kiện của bot ---
@@ -686,7 +657,7 @@ async def on_ready():
 
 @bot.event
 async def on_member_join(member):
-    channel_id = 1322848542758277202
+    channel_id = 1322848542758277202 # Đảm bảo đây là ID kênh chào mừng hợp lệ của bạn
 
     channel = bot.get_channel(channel_id)
 
@@ -725,10 +696,10 @@ async def on_member_join(member):
 # --- Slash Command để TEST tạo ảnh welcome ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True)
+@app_commands.checks.has_permissions(administrator=True) # Chỉ quản trị viên mới dùng được lệnh này
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
-    await interaction.response.defer(thinking=True)
+    await interaction.response.defer(thinking=True) # Bot sẽ "đang nghĩ" để tránh timeout
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
@@ -743,14 +714,14 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>" # Đã thêm ✦ vào đây
+        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
     )
 
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
     """Hàm async để khởi động cả Flask và bot Discord."""
     flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
+    flask_thread.daemon = True # Đảm bảo luồng Flask tự dừng khi chương trình chính dừng
     flask_thread.start()
 
     print(
