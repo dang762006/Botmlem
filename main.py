@@ -181,7 +181,7 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
                 continue
 
             # 2. Hạn chế màu trắng/rất nhạt (phía trên cùng hình vuông)
-            if l > 0.90: # Nếu quá gần trắng tinh (L > 90%)
+            if l > 0.80: # Nếu quá gần trắng tinh (L > 80%)
                 continue
             
             # 3. Phân loại màu: Rực rỡ & Sáng (Ưu tiên 1) vs Xám Sáng (Ưu tiên 2)
@@ -252,7 +252,7 @@ BACKGROUND_IMAGE_PATH = "welcome.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 LINE_THICKNESS = 3 # CẬP NHẬT ĐỘ DÀY LINE
 LINE_VERTICAL_OFFSET_FROM_NAME = 13 # Khoảng cách từ tên đến đường line
-LINE_LENGTH_FACTOR = 0.75 # Tỷ lệ độ dài của line so với độ dài của tên (80%)
+LINE_LENGTH_FACTOR = 0.70 # Tỷ lệ độ dài của line so với độ dài của tên (70%)
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
@@ -495,7 +495,7 @@ async def create_welcome_image(member):
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=1.1,  # Tăng độ sáng
-        saturation_factor=3.6,  # Tăng độ bão hòa
+        saturation_factor=4.6,  # Tăng độ bão hòa
         clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
         clamp_max_l=0.90        # Giới hạn độ sáng tối đa để không bị quá trắng
     )
@@ -519,7 +519,7 @@ async def create_welcome_image(member):
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=1.2, # Tăng nhẹ độ sáng của bóng WELCOME
-        saturation_factor=4.2, # Tăng nhẹ độ bão hòa để bóng có màu sắc hơn
+        saturation_factor=3.2, # Tăng nhẹ độ bão hòa để bóng có màu sắc hơn
         clamp_min_l=0.25,      # Đảm bảo độ sáng tối thiểu cho bóng
         clamp_max_l=0.55       # Giới hạn độ sáng tối đa, không cho quá sáng
     )
@@ -552,9 +552,9 @@ async def create_welcome_image(member):
     shadow_color_name_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=1.2, # Tăng nhẹ độ sáng của bóng tên
-        saturation_factor=4.2, # Tăng nhẹ độ bão hòa
-        clamp_min_l=0.2,       # Đảm bảo độ sáng tối thiểu cho bóng tên
-        clamp_max_l=0.5        # Giới hạn độ sáng tối đa
+        saturation_factor=3.2, # Tăng nhẹ độ bão hòa
+        clamp_min_l=0.25,       # Đảm bảo độ sáng tối thiểu cho bóng tên
+        clamp_max_l=0.55        # Giới hạn độ sáng tối đa
     )
     shadow_color_name = (*shadow_color_name_rgb, 255)
 
