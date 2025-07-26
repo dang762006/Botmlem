@@ -198,9 +198,6 @@ def get_dominant_color(image_bytes):
             else:
                 color_type_score = 1 # Mặc định là màu tốt
 
-            if not is_dark_color and not is_bright_color and not is_grayish:
-                color_type_score = 0 # Ưu tiên màu tươi sáng, không quá tối/sáng/xám
-
             # Điểm số để ưu tiên màu sắc:
             # Ưu tiên màu tươi sáng, không quá tối, không quá xám.
             # Điểm số càng thấp càng tốt.
@@ -280,14 +277,14 @@ def get_font(path, size):
         print(f"Lỗi: Không tìm thấy font {path}. Vui lòng kiểm tra đường dẫn.")
         return ImageFont.load_default() # Fallback font
 
-async def load_global_images():
+def _load_static_assets():
     """Tải tất cả các ảnh dùng chung một lần khi bot khởi động."""
     global GLOBAL_BACKGROUND_IMAGE, GLOBAL_AVATAR_MASK_IMAGE, GLOBAL_STROKE_OVERLAY_IMAGE
     
     # Tải ảnh nền
     try:
         GLOBAL_BACKGROUND_IMAGE = Image.open(BACKGROUND_IMAGE_PATH).convert("RGBA")
-        print(f"Đã tải ảnh nền: {BACKGROUND_IMAGE_PATH}")
+        print(f"DEBUG: Đã tải ảnh nền: {BACKGROUND_IMAGE_PATH}")
     except FileNotFoundError:
         print(f"LỖI: Không tìm thấy file ảnh nền: {BACKGROUND_IMAGE_PATH}")
         return False
@@ -295,7 +292,7 @@ async def load_global_images():
     # Tải mask avatar (quan trọng: convert sang "L" mode cho putalpha)
     try:
         GLOBAL_AVATAR_MASK_IMAGE = Image.open(AVATAR_MASK_IMAGE_PATH).convert("L")
-        print(f"Đã tải mask avatar: {AVATAR_MASK_IMAGE_PATH}")
+        print(f"DEBUG: Đã tải mask avatar: {AVATAR_MASK_IMAGE_PATH}")
     except FileNotFoundError:
         print(f"LỖI: Không tìm thấy file mask avatar: {AVATAR_MASK_IMAGE_PATH}")
         return False
@@ -303,7 +300,7 @@ async def load_global_images():
     # Tải ảnh stroke (cũng cần RGBA để có kênh alpha cho viền)
     try:
         GLOBAL_STROKE_OVERLAY_IMAGE = Image.open(STROKE_OVERLAY_IMAGE_PATH).convert("RGBA")
-        print(f"Đã tải stroke overlay: {STROKE_OVERLAY_IMAGE_PATH}")
+        print(f"DEBUG: Đã tải stroke overlay: {STROKE_OVERLAY_IMAGE_PATH}")
     except FileNotFoundError:
         print(f"LỖI: Không tìm thấy file stroke overlay: {STROKE_OVERLAY_IMAGE_PATH}")
         return False
@@ -311,10 +308,10 @@ async def load_global_images():
     return True
 
 # --- Hàm chính để tạo ảnh chào mừng ---
-async def generate_welcome_image(member: discord.Member):
+async def create_welcome_image(member: discord.Member):
     if GLOBAL_BACKGROUND_IMAGE is None or GLOBAL_AVATAR_MASK_IMAGE is None or GLOBAL_STROKE_OVERLAY_IMAGE is None:
         print("LỖI: Các ảnh toàn cục chưa được tải. Đang thử tải lại...")
-        if not await load_global_images():
+        if not _load_static_assets():
             print("Không thể tải các ảnh cần thiết. Không thể tạo ảnh chào mừng.")
             return None
 
@@ -487,74 +484,171 @@ async def generate_welcome_image(member: discord.Member):
     byte_io.seek(0)
     return byte_io
 
-# --- Lệnh Bot Discord ---
+# --- Các tác vụ của bot ---
+@tasks.loop(minutes=1) # Tần suất kiểm tra trạng thái (có thể thay đổi)
+async def activity_heartbeat():
+    sleep_duration = random.randint(1 * 60, 3 * 60) # Ngủ ngẫu nhiên 1-3 phút
+    print(
+        f"DEBUG: Tác vụ activity_heartbeat đang ngủ {sleep_duration // 60} phút để chuẩn bị cập nhật trạng thái..."
+    )
+    await asyncio.sleep(sleep_duration)
+
+    activities = [
+        discord.Activity(type=discord.ActivityType.watching,
+                         name=f"Dawn_wibu phá đảo tựa game mới "),
+        discord.Activity(type=discord.ActivityType.listening,
+                         name=f"Bài TRÌNH "),
+        discord.Activity(type=discord.ActivityType.playing,
+                         name=f"Minecraft cùng Anh Em "),
+    ]
+
+    try:
+        new_activity = random.choice(activities)
+        await bot.change_presence(activity=new_activity)
+        print(
+            f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name})."
+        )
+
+    except Exception as e:
+        print(
+            f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
+
+@activity_heartbeat.before_loop
+async def before_activity_heartbeat():
+    await bot.wait_until_ready()
+    print("DEBUG: activity_heartbeat task chờ bot sẵn sàng.")
+
+CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971 # Đảm bảo đây là ID kênh hợp lệ của bạn
+
+RANDOM_MESSAGES = [
+    "Chào mọi người! ✨ Chúc một ngày tốt lành!",
+    "Đang online đây! Có ai cần gì không? 🤖",
+    "Thế giới thật tươi đẹp phải không? 💖",
+    "Gửi chút năng lượng tích cực đến tất cả! 💪",
+    "Đừng quên thư giãn nhé! 😌",
+    "Tôi là bot thông minh nhất quả đất! 💡",
+    "Ngày mới năng động nha mọi người! 🚀",
+    "Có câu hỏi khó nào cần tôi giải đáp không? 🧠"
+]
+
+@tasks.loop(minutes=1) # Tần suất kiểm tra để gửi tin nhắn
+async def random_message_sender():
+    send_interval = random.randint(2 * 60, 5 * 60) # Ngủ ngẫu nhiên 2-5 phút
+    print(f"DEBUG: Tác vụ random_message_sender sẽ gửi tin nhắn sau {send_interval // 60} phút.")
+    await asyncio.sleep(send_interval)
+
+    channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
+    if channel:
+        if isinstance(channel, discord.TextChannel):
+            if channel.permissions_for(channel.guild.me).send_messages:
+                message_to_send = random.choice(RANDOM_MESSAGES)
+                try:
+                    await channel.send(message_to_send)
+                    print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{message_to_send}' vào kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+                except discord.errors.Forbidden:
+                    print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+                except Exception as e:
+                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
+            else:
+                print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
+        else:
+            print(f"LỖI KÊNH: Kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES} không phải là kênh văn bản.")
+    else:
+        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}. Vui lòng kiểm tra lại ID hoặc bot chưa có quyền truy cập kênh đó.")
+
+@random_message_sender.before_loop
+async def before_random_message_sender():
+    await bot.wait_until_ready()
+    print("DEBUG: random_message_sender task chờ bot sẵn sàng.")
+
+# --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
-    print(f"Bot đã sẵn sàng: {bot.user.name} ({bot.user.id})")
-    print("Đang tải các ảnh toàn cục...")
-    if await load_global_images():
-        print("Tải ảnh toàn cục hoàn tất.")
-    else:
-        print("Có lỗi khi tải ảnh toàn cục. Bot có thể không hoạt động đúng.")
-
-    # Đăng ký lệnh slash commands
+    """Xử lý sự kiện khi bot sẵn sàng."""
+    print(f'{bot.user} đã sẵn sàng! 🎉')
+    print('Bot đã online và có thể hoạt động.')
     try:
         synced = await bot.tree.sync()
-        print(f"Đã đồng bộ {len(synced)} lệnh slash commands.")
+        print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
     except Exception as e:
-        print(f"Lỗi khi đồng bộ lệnh slash: {e}")
+        print(
+            f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
+        )
+
+    # Tải tất cả các tài nguyên tĩnh khi bot sẵn sàng (chỉ một lần)
+    _load_static_assets()
+    print("DEBUG: Đã tải tất cả tài nguyên tĩnh khi bot sẵn sàng.")
+
+    if not activity_heartbeat.is_running():
+        activity_heartbeat.start()
+        print("DEBUG: Đã bắt đầu tác vụ thay đổi trạng thái để giữ hoạt động.")
+
+    if not random_message_sender.is_running():
+        random_message_sender.start()
+        print("DEBUG: Đã bắt đầu tác vụ gửi tin nhắn định kỳ.")
+
 
 @bot.event
 async def on_member_join(member):
-    """Xử lý khi có thành viên mới vào server."""
-    print(f"Thành viên mới: {member.display_name} ({member.id}) đã tham gia {member.guild.name}")
-    
-    # Thay đổi ID kênh chào mừng của bạn tại đây
-    # Ví dụ: channel_id = 123456789012345678
-    channel_id = 1230076097561858068  # Thay thế bằng ID kênh chào mừng thực tế của bạn
+    channel_id = 1322848542758277202 # Đảm bảo đây là ID kênh chào mừng hợp lệ của bạn
+
     channel = bot.get_channel(channel_id)
 
-    if channel:
-        await channel.send(f"Chào mừng {member.mention} đã đến với server!")
-        
-        # Tạo ảnh chào mừng
-        welcome_image_bytes = await generate_welcome_image(member)
-        if welcome_image_bytes:
-            # Gửi ảnh vào kênh
-            await channel.send(file=discord.File(welcome_image_bytes, "welcome_card.png"))
-        else:
-            await channel.send("Có lỗi khi tạo ảnh chào mừng. Vui lòng thử lại sau.")
-    else:
-        print(f"Không tìm thấy kênh với ID: {channel_id}")
+    if channel is None:
+        print(
+            f"LỖI KÊNH: Không tìm thấy kênh với ID {channel_id}. Vui lòng kiểm tra lại ID kênh hoặc bot chưa có quyền truy cập kênh đó."
+        )
+        return
 
-@bot.tree.command(name="ping", description="Kiểm tra trạng thái bot.")
-async def ping(interaction: discord.Interaction):
-    await interaction.response.send_message("Pong!", ephemeral=True)
+    if not channel.permissions_for(member.guild.me).send_messages or \
+       not channel.permissions_for(member.guild.me).attach_files:
+        print(
+            f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn hoặc đính kèm file trong kênh {channel.name} (ID: {channel_id}). Vui lòng kiểm tra lại quyền của bot trong Discord."
+        )
+        return
 
-@bot.tree.command(name="welcome_test", description="Kiểm tra ảnh chào mừng với avatar của bạn.")
-async def welcome_test(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True) # Để tránh lỗi timeout
-    member = interaction.user # Lấy người dùng thực hiện lệnh
-    welcome_image_bytes = await generate_welcome_image(member)
-    if welcome_image_bytes:
-        await interaction.followup.send(file=discord.File(welcome_image_bytes, "welcome_card_test.png"), ephemeral=True)
-    else:
-        await interaction.followup.send("Có lỗi khi tạo ảnh chào mừng. Vui lòng kiểm tra log.", ephemeral=True)
+    try:
+        print(f"DEBUG: Đang tạo ảnh chào mừng cho {member.display_name}...")
+        image_bytes = await create_welcome_image(member)
+        await channel.send(
+            f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
+            file=discord.File(fp=image_bytes, filename='welcome.png'))
+        print(f"Đã gửi ảnh chào mừng thành công cho {member.display_name}!")
+    except discord.errors.HTTPException as e:
+        print(
+            f"LỖI HTTP DISCORD: Lỗi khi gửi ảnh chào mừng (có thể do giới hạn tốc độ hoặc quyền): {e}"
+        )
+        await channel.send(
+            f"Chào mừng {member.mention} đã đến với {member.guild.name}! (Có lỗi khi tạo ảnh chào mừng, xin lỗi!)"
+        )
+    except Exception as e:
+        print(f"LỖỖI CHÀO MỪNG KHÁC: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
+        await channel.send(
+            f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# Lập lịch dọn dẹp cache
-@tasks.loop(seconds=CACHE_CLEANUP_INTERVAL)
-async def cleanup_avatar_cache():
-    # Hiện tại không có logic dọn dẹp, nhưng đây là nơi bạn sẽ thêm nó
-    # Ví dụ: xóa các avatar đã cũ
-    print(f"DEBUG: Đang chạy dọn dẹp cache avatar (chưa có logic cụ thể).")
+# --- Slash Command để TEST tạo ảnh welcome ---
+@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
+@app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
+@app_commands.checks.has_permissions(administrator=True) # Chỉ quản trị viên mới dùng được lệnh này
+async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
+    member_to_test = user if user else interaction.user
+    await interaction.response.defer(thinking=True) # Bot sẽ "đang nghĩ" để tránh timeout
 
-@bot.event
-async def on_connect():
-    cleanup_avatar_cache.start() # Khởi động vòng lặp dọn dẹp khi bot kết nối
+    try:
+        print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
+        image_bytes = await create_welcome_image(member_to_test)
+        await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
+        print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
+    except Exception as e:
+        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
+        print(f"LỖỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
-@bot.event
-async def on_disconnect():
-    cleanup_avatar_cache.cancel() # Dừng vòng lặp dọn dẹp khi bot ngắt kết nối
+# --- Slash Command mới: /skibidi ---
+@bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
+async def skibidi(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
+    )
 
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
