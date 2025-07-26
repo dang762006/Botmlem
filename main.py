@@ -469,10 +469,11 @@ async def create_welcome_image(member):
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo được chọn
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
-        brightness_factor=1.3,  # Tăng độ sáng lên một chút nữa
-        saturation_factor=3.5,  # Giữ độ bão hòa cao, có thể điều chỉnh thêm
-        clamp_min_l=0.4,       # Giảm giới hạn dưới của độ sáng để cho phép màu đậm hơn
-        clamp_max_l=0.95        # Tăng giới hạn trên để cho phép màu sáng hơn một chút
+        brightness_factor=1.1, # Giảm nhẹ độ sáng để cho phép màu đậm hơn
+        saturation_factor=3.0,  # Có thể giảm một chút nếu 4.6 quá mạnh, hoặc giữ nếu muốn cực kỳ rực rỡ
+        clamp_min_l=0.2,       # **Rất quan trọng: Giảm đáng kể giới hạn dưới của độ sáng.**
+                               # Điều này cho phép màu có thể tối hơn, giữ lại độ đậm.
+        clamp_max_l=0.85        # Giảm nhẹ giới hạn trên để tránh màu quá sáng, mất sắc độ
     )
     stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên (thêm alpha 255)
 
