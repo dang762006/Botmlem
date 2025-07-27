@@ -161,7 +161,7 @@ async def get_dominant_color(image_bytes, color_count=20):
 
         color_thief = ColorThief(img_temp_io)
         palette = color_thief.get_palette(color_count=color_count, quality=1)
-        print(f"DEBUG_COLORTHIEF: Bảng màu thô từ ColorThief: {palette}") # THÊM DÒNG NÀY
+        print(f"DEBUG_COLORTHIEF: Bảng màu thô từ ColorThief: {palette}")
 
         qualified_colors = []
 
