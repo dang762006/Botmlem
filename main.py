@@ -161,6 +161,7 @@ async def get_dominant_color(image_bytes, color_count=20):
 
         color_thief = ColorThief(img_temp_io)
         palette = color_thief.get_palette(color_count=color_count, quality=1)
+        print(f"DEBUG_COLORTHIEF: Bảng màu thô từ ColorThief: {palette}") # THÊM DÒNG NÀY
 
         qualified_colors = []
 
@@ -730,7 +731,10 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         
         # Thêm các dòng print này ngay sau dòng trên
         print(f"DEBUG_TESTWELCOME: original_image_mode = {original_image_mode}")
-        print(f"DEBUG_TESTWELCOME: dominant_color_from_avatar = {dominant_color_from_avatar}")
+        # dominant_color_from_avatar được trả về từ create_welcome_image, nhưng không được lưu ở đây.
+        # Để in ra dominant_color_from_avatar ở đây, cần phải lấy nó từ create_welcome_image
+        # hoặc in trực tiếp trong get_dominant_color
+        # (Đã có print trong get_dominant_color rồi: DEBUG_COLORTHIEF: Bảng màu thô từ ColorThief: ...)
         print(f"DEBUG_TESTWELCOME: processed_avatar_io.tell() = {processed_avatar_io.tell() if processed_avatar_io else 'None'}")
         
         # Gửi ảnh welcome chính
@@ -750,8 +754,17 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
             files_to_send.append(discord.File(fp=processed_avatar_io, filename='debug_avatar_processed_by_colorthief.png'))
             debug_message += "\nĐây là ảnh avatar (đã được làm phẳng lên nền trắng nếu là PNG trong suốt) mà bot dùng để xác định màu sắc:"
 
-        await interaction.followup.send(content=debug_message, files=files_to_send)
-        print(f"DEBUG: Đã gửi ảnh test chào mừng và thông tin debug cho {member_to_test.display_name} thông qua lệnh slash.")
+        # --- Thêm try-except block cho followup.send ---
+        try:
+            await interaction.followup.send(content=debug_message, files=files_to_send)
+            print(f"DEBUG: Đã gửi ảnh test chào mừng và thông tin debug cho {member_to_test.display_name} thành công trong Discord.")
+        except discord.errors.Forbidden:
+            print(f"LỖI DISCORD: Bot thiếu quyền 'Gửi tin nhắn' hoặc 'Đính kèm tệp' trong kênh này cho lệnh testwelcome. Vui lòng kiểm tra lại quyền.")
+            await interaction.followup.send("Bot không có đủ quyền để gửi tin nhắn debug hoặc tệp đính kèm trong kênh này. Vui lòng kiểm tra quyền hạn của bot.")
+        except Exception as send_error:
+            print(f"LỖI KHI GỬI FOLLOWUP: {send_error}")
+            await interaction.followup.send(f"Có lỗi xảy ra khi gửi thông tin debug: `{send_error}`. Vui lòng kiểm tra console của bot để biết thêm chi tiết.")
+        print(f"DEBUG: Đã hoàn tất xử lý lệnh testwelcome cho {member_to_test.display_name}.")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
