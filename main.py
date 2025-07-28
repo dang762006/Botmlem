@@ -359,9 +359,13 @@ async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
 
 
 def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color, offset_x, offset_y):
-    """Vẽ văn bản với hiệu ứng đổ bóng đơn giản với offset tùy chỉnh."""
-    draw_obj.text((int(x + offset_x), int(y + offset_y)), text, font=font, fill=shadow_color)
-    draw_obj.text((int(x), int(y)), text, font=font, fill=main_color)
+    """Vẽ văn bản với hiệu ứng đổ bóng đơn giản với offset tùy chỉnh.
+    Bóng đổ được vẽ trước để nó nằm dưới chữ chính.
+    """
+    # Vẽ bóng đổ
+    draw_obj.text((x + offset_x, y + offset_y), text, font=font, fill=shadow_color)
+    # Vẽ chữ chính
+    draw_obj.text((x, y), text, font=font, fill=main_color)
 
 def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb, actual_line_length):
     """Vẽ thanh line đơn giản với độ dài tùy chỉnh, căn giữa."""
@@ -383,48 +387,14 @@ def _get_text_height(text, font, draw_obj):
     bbox = draw_obj.textbbox((0, 0), text, font=font)
     return bbox[3] - bbox[1]
 
-def is_basic_char(char):
-    """
-    Kiểm tra xem một ký tự có phải là chữ cái (Tiếng Việt hoặc Latin), số hoặc dấu câu cơ bản không.
-    Bổ sung thêm các ký tự đặc biệt thường dùng.
-    """
-    if 'a' <= char <= 'z' or 'A' <= char <= 'Z':
-        return True
-    if '0' <= char <= '9':
-        return True
-    
-    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=@_|=~`!^*""" + '\\'
-    if char in special_chars_to_keep or char.isspace():
-        return True
-    
-    unicode_ord = ord(char)
-    if (0x00C0 <= unicode_ord <= 0x017F) or \
-       (0x1EA0 <= unicode_ord <= 0x1EFF):
-        return True
-    
-    return False
+# Hàm này không còn được dùng cho welcome_text và name_text
+# def is_basic_char(char):
+#     # ... (giữ nguyên nếu bạn dùng cho các chỗ khác)
+#     return True 
 
-def process_text_for_drawing(original_text, main_font, symbol_font, replacement_char='✦', temp_draw_obj=None):
-    """
-    Xử lý văn bản để vẽ.
-    Các ký tự cơ bản dùng main_font. Các ký tự không cơ bản dùng replacement_char với symbol_font.
-    Trả về danh sách các (ký tự, font) và chiều rộng tổng cộng.
-    """
-    processed_parts = []
-    total_width = 0
-    
-    if temp_draw_obj is None:
-        temp_draw_obj = ImageDraw.Draw(Image.new('RGBA', (1, 1))) 
-
-    for char in original_text:
-        if is_basic_char(char):
-            processed_parts.append((char, main_font))
-            total_width += temp_draw_obj.textlength(char, font=main_font)
-        else:
-            processed_parts.append((replacement_char, symbol_font))
-            total_width += temp_draw_obj.textlength(replacement_char, font=symbol_font)
-    
-    return processed_parts, total_width
+# def process_text_for_drawing(...):
+#     # ... (giữ nguyên nếu bạn dùng cho các chỗ khác)
+#     return processed_parts, total_width
 
 
 async def create_welcome_image(member):
@@ -435,7 +405,7 @@ async def create_welcome_image(member):
 
     font_welcome = GLOBAL_FONT_WELCOME
     font_name = GLOBAL_FONT_NAME
-    font_symbol = GLOBAL_FONT_SYMBOL
+    # font_symbol = GLOBAL_FONT_SYMBOL # Không cần dùng trực tiếp font_symbol ở đây nữa
 
     # 2. Tạo bản sao của ảnh nền từ đối tượng đã tải trước
     if GLOBAL_BACKGROUND_IMAGE:
@@ -448,15 +418,15 @@ async def create_welcome_image(member):
     draw = ImageDraw.Draw(img)
 
     # Tính toán offset bóng đổ dựa trên kích thước ảnh (khoảng 0.5% của chiều rộng/chiều cao)
-    shadow_offset_x = int(img_width * 0.005)
-    shadow_offset_y = int(img_height * 0.005)
+    # Tăng offset lên một chút để bóng đổ rõ hơn
+    shadow_offset_x = int(img_width * 0.007) 
+    shadow_offset_y = int(img_height * 0.007)
 
     # 3. Lấy và xử lý Avatar (Đã được cắt tròn nhờ mask được tạo trong _get_and_process_avatar)
     avatar_url = member.avatar.url if member.avatar else member.default_avatar.url
     masked_avatar, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
 
     # Xác định màu chủ đạo từ avatar
-    # Sửa đổi: Hàm get_dominant_color giờ trả về 3 giá trị
     dominant_color_from_avatar, original_image_mode, processed_avatar_io = None, None, None
     if avatar_bytes:
         dominant_color_from_avatar, original_image_mode, processed_avatar_io = await get_dominant_color(avatar_bytes, color_count=20)
@@ -466,12 +436,26 @@ async def create_welcome_image(member):
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo được chọn
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
-        brightness_factor=1.1,
-        saturation_factor=3.0,
+        brightness_factor=1.1, # Giữ nguyên hoặc tăng nhẹ độ sáng
+        saturation_factor=3.0, # Tăng cường độ bão hòa
         clamp_min_l=0.2,
         clamp_max_l=0.85
     )
-    stroke_color = (*stroke_color_rgb, 255) # Màu của viền avatar và chữ tên (thêm alpha 255)
+    # Màu chữ chính (WELCOME) là trắng
+    main_text_color = (255, 255, 255, 255) 
+    # Màu chữ tên và đường kẻ là màu chủ đạo điều chỉnh được
+    name_and_line_color = (*stroke_color_rgb, 255)
+
+    # Màu bóng đổ cho WELCOME và tên người dùng
+    # Bóng đổ cần tối hơn và có thể ít bão hòa hơn màu chính một chút để tạo sự tương phản
+    shadow_color_rgb = adjust_color_brightness_saturation(
+        dominant_color_from_avatar,
+        brightness_factor=0.4, # Làm tối hơn nữa
+        saturation_factor=2.0, # Giảm bão hòa hoặc giữ nguyên
+        clamp_min_l=0.1,
+        clamp_max_l=0.4
+    )
+    shadow_color = (*shadow_color_rgb, 255)
 
     # 4. Tính toán vị trí Avatar và các phần tử
     avatar_x = int(img_width / 2 - AVATAR_SIZE / 2)
@@ -491,7 +475,7 @@ async def create_welcome_image(member):
 
     # --- 5. Dán ảnh stroke PNG đã tô màu (sử dụng GLOBAL_STROKE_OVERLAY_IMAGE) ---
     if GLOBAL_STROKE_OVERLAY_IMAGE:
-        tint_layer = Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, (*stroke_color_rgb, 255))
+        tint_layer = Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, name_and_line_color)
         final_stroke_layer = Image.composite(tint_layer, Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, (0,0,0,0)), GLOBAL_STROKE_OVERLAY_IMAGE)
         img.paste(final_stroke_layer, (0, 0), final_stroke_layer)
     else:
@@ -506,60 +490,45 @@ async def create_welcome_image(member):
     welcome_text_x = int((img_width - welcome_text_width) / 2)
     welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar) # Vị trí Y cho WELCOME
     
-    # Tạo màu đổ bóng cho chữ WELCOME
-    shadow_color_welcome_rgb = adjust_color_brightness_saturation(
-        dominant_color_from_avatar,
-        brightness_factor=0.5,
-        saturation_factor=2.5,
-        clamp_min_l=0.25,
-        clamp_max_l=0.55
-    )
     _draw_text_with_shadow(
         draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
-        (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
+        main_text_color, shadow_color, shadow_offset_x, shadow_offset_y
     )
 
     # 8. Vẽ tên người dùng
     name_text_raw = member.display_name
-    temp_draw_for_text_calc = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
-    processed_name_parts, name_text_width = process_text_for_drawing(
-        name_text_raw, font_name, font_symbol, replacement_char='✦', temp_draw_obj=temp_draw_for_text_calc
-    )
+    # Tính chiều rộng thực của tên để quyết định cắt
+    temp_draw_for_name_width = ImageDraw.Draw(Image.new('RGBA', (1,1)))
+    name_text_width_full = temp_draw_for_name_width.textlength(name_text_raw, font=font_name)
+
+    # Giới hạn chiều rộng tên để không tràn ra ngoài ảnh
+    max_name_width_allowed = img_width * 0.8 # Tên không vượt quá 80% chiều rộng ảnh
     
-    max_chars_for_name = 25
-    if name_text_width > img_width * 0.8:
-        avg_char_width = name_text_width / len(processed_name_parts) if processed_name_parts else 1
-        chars_to_remove = int((name_text_width - img_width * 0.8) / avg_char_width) + 3
-        if len(processed_name_parts) > chars_to_remove and len(processed_name_parts) > 3:
-            processed_name_parts = processed_name_parts[:-chars_to_remove]
-            processed_name_parts.append(('...', font_name))
-            name_text_width = 0
-            for char, font_to_use in processed_name_parts:
-                name_text_width += temp_draw_for_text_calc.textlength(char, font=font_to_use)
-
-
+    name_text_display = name_text_raw
+    if name_text_width_full > max_name_width_allowed:
+        # Cắt tên nếu quá dài, thêm "..."
+        for i in range(len(name_text_raw), 0, -1):
+            truncated_name = name_text_raw[:i] + "..."
+            if temp_draw_for_name_width.textlength(truncated_name, font=font_name) <= max_name_width_allowed:
+                name_text_display = truncated_name
+                break
+        else: # Trường hợp tên quá ngắn nhưng vẫn quá dài khi thêm "..." (rất hiếm)
+            name_text_display = name_text_raw[:3] + "..." # Cắt rất ngắn nếu không thể khớp
+    
+    name_text_width = temp_draw_for_name_width.textlength(name_text_display, font=font_name)
     name_text_x = int((img_width - name_text_width) / 2)
+    
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
     name_text_y = int(welcome_text_y_pos + welcome_actual_height + 10)
 
-    shadow_color_name_rgb = adjust_color_brightness_saturation(
-        dominant_color_from_avatar,
-        brightness_factor=0.5,
-        saturation_factor=2.5,
-        clamp_min_l=0.25,
-        clamp_max_l=0.55
+    _draw_text_with_shadow(
+        draw, name_text_display, font_name, name_text_x, name_text_y,
+        name_and_line_color, shadow_color, shadow_offset_x, shadow_offset_y
     )
-    shadow_color_name = (*shadow_color_name_rgb, 255)
-
-    current_x = float(name_text_x)
-    for char, font_to_use in processed_name_parts:
-        draw.text((int(current_x + shadow_offset_x), int(name_text_y + shadow_offset_y)), char, font=font_to_use, fill=shadow_color_name)
-        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color)
-        current_x += draw.textlength(char, font=font_to_use)
 
     # 9. Vẽ thanh line trang trí
-    name_actual_height = _get_text_height("M", font_name, draw)
+    name_actual_height = _get_text_height("M", font_name, draw) # Lấy chiều cao của một ký tự điển hình
     line_y = int(name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME)
     line_color_rgb = stroke_color_rgb
     actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
@@ -570,7 +539,6 @@ async def create_welcome_image(member):
     img.save(img_byte_arr, format='PNG')
     img_byte_arr.seek(0)
     
-    # Trả về cả image_bytes, original_image_mode, và processed_avatar_io
     return img_byte_arr, original_image_mode, processed_avatar_io
 
 # --- Các tác vụ của bot ---
@@ -710,8 +678,6 @@ async def on_member_join(member):
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member.display_name}...")
-        # Tạo ảnh welcome, nhưng không cần debug chi tiết ở đây nữa
-        # Chỉ lấy image_bytes, các giá trị khác có thể bỏ qua
         image_bytes, _, _ = await create_welcome_image(member)
         await channel.send(
             f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
@@ -739,7 +705,6 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
-        # Lấy cả image_bytes, original_image_mode, và processed_avatar_io
         image_bytes, original_image_mode, processed_avatar_io = await create_welcome_image(member_to_test)
         
         # Thêm các dòng print này ngay sau dòng trên
@@ -788,7 +753,6 @@ async def welcomepreview_slash(interaction: discord.Interaction, user: discord.M
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng hoàn chỉnh cho {member_to_test.display_name}...")
-        # Chỉ lấy image_bytes, các giá trị debug khác không cần
         image_bytes, _, _ = await create_welcome_image(member_to_test)
         
         # Gửi ảnh welcome chính, không kèm debug
