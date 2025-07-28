@@ -848,7 +848,201 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖỖI TỔNG QUAN TESTWELCOME: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         traceback.print_exc()
+# --- Slash Command mới: /debugimage ---
+@bot.tree.command(name="debugimage", description="Tạo ảnh chào mừng theo từng bước để debug (chỉ admin).")
+@app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
+@app_commands.checks.has_permissions(administrator=True) # Chỉ quản trị viên mới dùng được lệnh này
+async def debugimage_slash(interaction: discord.Interaction, user: discord.Member = None):
+    member_to_test = user if user else interaction.user
+    await interaction.response.defer(thinking=True) # Bot sẽ "đang nghĩ" để tránh timeout
 
+    try:
+        print(f"DEBUG: Bắt đầu quá trình debug ảnh cho {member_to_test.display_name}...")
+
+        # 1. Tải tài nguyên tĩnh nếu chưa có (fallback)
+        if not all([GLOBAL_FONT_WELCOME, GLOBAL_FONT_NAME, GLOBAL_FONT_SYMBOL, GLOBAL_AVATAR_MASK_IMAGE, GLOBAL_BACKGROUND_IMAGE, GLOBAL_STROKE_OVERLAY_IMAGE]):
+            print("CẢNH BÁO: Một số tài nguyên chưa được tải sẵn trước lệnh debugimage. Đang cố gắng tải lại.")
+            _load_static_assets() # Tải lại nếu chưa được tải
+
+        font_welcome = GLOBAL_FONT_WELCOME
+        font_name = GLOBAL_FONT_NAME
+        font_symbol = GLOBAL_FONT_SYMBOL
+
+        # Khởi tạo ảnh nền
+        if GLOBAL_BACKGROUND_IMAGE:
+            current_img = GLOBAL_BACKGROUND_IMAGE.copy()
+            print(f"DEBUG_STEP: Đã tạo ảnh nền ban đầu từ '{BACKGROUND_IMAGE_PATH}'. Kích thước: {current_img.size}")
+        else:
+            print(f"LỖI DEBUG_STEP: Ảnh nền '{BACKGROUND_IMAGE_PATH}' không tải được. Tạo ảnh nền mặc định.")
+            current_img = Image.new('RGBA', DEFAULT_IMAGE_DIMENSIONS, color=(0, 0, 0, 255))
+        
+        # Gửi ảnh bước 1: Ảnh nền ban đầu
+        buffer_step1 = io.BytesIO()
+        current_img.save(buffer_step1, format='PNG')
+        buffer_step1.seek(0)
+        await interaction.followup.send(content="**Bước 1: Ảnh nền ban đầu**", file=discord.File(fp=buffer_step1, filename='step1_background.png'))
+        print(f"DEBUG_STEP: Đã gửi ảnh nền ban đầu.")
+
+        img_width, img_height = current_img.size
+        draw = ImageDraw.Draw(current_img)
+        shadow_offset_x = int(img_width * 0.005)
+        shadow_offset_y = int(img_height * 0.005)
+
+        # Lấy và xử lý Avatar
+        avatar_url = member_to_test.avatar.url if member_to_test.avatar else member_to_test.default_avatar.url
+        masked_avatar, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
+
+        # Xác định màu chủ đạo từ avatar
+        dominant_color_from_avatar = (0, 252, 233) # Default Cyan
+        if avatar_bytes:
+            temp_dominant_color, _, _ = await get_dominant_color(avatar_bytes, color_count=20)
+            if temp_dominant_color:
+                dominant_color_from_avatar = temp_dominant_color
+        
+        stroke_color_rgb = adjust_color_brightness_saturation(
+            dominant_color_from_avatar, brightness_factor=1.1, saturation_factor=3.0, clamp_min_l=0.2, clamp_max_l=0.85
+        )
+        stroke_color = (*stroke_color_rgb, 255)
+
+        avatar_x = int(img_width / 2 - AVATAR_SIZE / 2)
+        avatar_y = int(img_height * 0.36) - AVATAR_SIZE // 2
+        y_offset_from_avatar = 20
+
+        # Bước 2: Vẽ hình tròn bán trong suốt phía sau Avatar
+        background_circle_color_rgba = stroke_color_rgb + (128,)
+        circle_overlay_layer = Image.new('RGBA', current_img.size, (0,0,0,0))
+        draw_circle_overlay = ImageDraw.Draw(circle_overlay_layer)
+        draw_circle_overlay.ellipse(
+            (avatar_x, avatar_y, avatar_x + AVATAR_SIZE, avatar_y + AVATAR_SIZE), 
+            fill=background_circle_color_rgba
+        )
+        current_img = Image.alpha_composite(current_img, circle_overlay_layer)
+        buffer_step2 = io.BytesIO()
+        current_img.save(buffer_step2, format='PNG')
+        buffer_step2.seek(0)
+        await interaction.followup.send(content="**Bước 2: Sau khi vẽ vòng tròn bán trong suốt sau avatar**", file=discord.File(fp=buffer_step2, filename='step2_circle_overlay.png'))
+        print(f"DEBUG_STEP: Đã gửi ảnh sau khi vẽ vòng tròn bán trong suốt.")
+
+        # Bước 3: Dán ảnh stroke PNG đã tô màu
+        if GLOBAL_STROKE_OVERLAY_IMAGE:
+            tint_layer = Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, (*stroke_color_rgb, 255))
+            final_stroke_layer = Image.composite(tint_layer, Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, (0,0,0,0)), GLOBAL_STROKE_OVERLAY_IMAGE)
+            current_img.paste(final_stroke_layer, (0, 0), final_stroke_layer)
+            print(f"DEBUG_STEP: Đã dán ảnh stroke overlay.")
+        else:
+            print(f"CẢNH BÁO DEBUG_STEP: Không có ảnh stroke overlay được tải trước. Bỏ qua bước này.")
+        buffer_step3 = io.BytesIO()
+        current_img.save(buffer_step3, format='PNG')
+        buffer_step3.seek(0)
+        await interaction.followup.send(content="**Bước 3: Sau khi dán stroke overlay**", file=discord.File(fp=buffer_step3, filename='step3_stroke_overlay.png'))
+        print(f"DEBUG_STEP: Đã gửi ảnh sau khi dán stroke.")
+
+        # Bước 4: Dán Avatar
+        current_img.paste(masked_avatar, (avatar_x, avatar_y), masked_avatar)
+        buffer_step4 = io.BytesIO()
+        current_img.save(buffer_step4, format='PNG')
+        buffer_step4.seek(0)
+        await interaction.followup.send(content="**Bước 4: Sau khi dán Avatar**", file=discord.File(fp=buffer_step4, filename='step4_avatar.png'))
+        print(f"DEBUG_STEP: Đã gửi ảnh sau khi dán avatar.")
+
+        # Bước 5: Vẽ chữ WELCOME
+        welcome_text = "WELCOME"
+        welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
+        welcome_text_x = int((img_width - welcome_text_width) / 2)
+        welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar)
+        
+        shadow_color_welcome_rgb = adjust_color_brightness_saturation(
+            dominant_color_from_avatar, brightness_factor=0.5, saturation_factor=2.5, clamp_min_l=0.25, clamp_max_l=0.55
+        )
+        _draw_text_with_shadow(
+            draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
+            (255, 255, 255), (*shadow_color_welcome_rgb, 255), shadow_offset_x, shadow_offset_y
+        )
+        buffer_step5 = io.BytesIO()
+        current_img.save(buffer_step5, format='PNG')
+        buffer_step5.seek(0)
+        await interaction.followup.send(content="**Bước 5: Sau khi vẽ chữ WELCOME**", file=discord.File(fp=buffer_step5, filename='step5_welcome_text.png'))
+        print(f"DEBUG_STEP: Đã gửi ảnh sau khi vẽ WELCOME.")
+
+        # Bước 6: Vẽ tên người dùng
+        name_text_raw = member_to_test.display_name
+        temp_draw_for_text_calc = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
+        processed_name_parts, name_text_width = process_text_for_drawing(
+            name_text_raw, font_name, font_symbol, replacement_char='✦', temp_draw_obj=temp_draw_for_text_calc
+        )
+        
+        # Kiểm tra và cắt tên nếu quá dài (logic này giữ nguyên từ code của bạn)
+        max_name_width_ratio = 0.8
+        if name_text_width > img_width * max_name_width_ratio:
+            target_width = img_width * max_name_width_ratio
+            current_width = 0
+            truncated_parts = []
+            for char, font_to_use in processed_name_parts:
+                char_width = temp_draw_for_text_calc.textlength(char, font=font_to_use)
+                if current_width + char_width < target_width - temp_draw_for_text_calc.textlength('...', font=font_name):
+                    truncated_parts.append((char, font_to_use))
+                    current_width += char_width
+                else:
+                    break
+            if truncated_parts:
+                processed_name_parts = truncated_parts
+                processed_name_parts.append(('...', font_name))
+                name_text_width = current_width + temp_draw_for_text_calc.textlength('...', font=font_name)
+            else:
+                processed_name_parts = [('...', font_name)]
+                name_text_width = temp_draw_for_text_calc.textlength('...', font=font_name)
+
+        name_text_x = int((img_width - name_text_width) / 2)
+        welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
+        welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
+        name_text_y = int(welcome_text_y_pos + welcome_actual_height + 10)
+
+        shadow_color_name_rgb = adjust_color_brightness_saturation(
+            dominant_color_from_avatar, brightness_factor=0.5, saturation_factor=2.5, clamp_min_l=0.25, clamp_max_l=0.55
+        )
+        shadow_color_name = (*shadow_color_name_rgb, 255)
+
+        current_x = float(name_text_x)
+        for char, font_to_use in processed_name_parts:
+            # Kiểm tra xem font_to_use có phải là None không
+            if font_to_use is None:
+                print(f"LỖI FONT DEBUG_STEP: Font là None khi vẽ ký tự '{char}'.")
+                # Fallback về font mặc định của Pillow nếu cần thiết
+                font_to_use = ImageFont.load_default()
+            
+            draw.text((int(current_x + shadow_offset_x), int(name_text_y + shadow_offset_y)), char, font=font_to_use, fill=shadow_color_name)
+            draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color)
+            current_x += draw.textlength(char, font=font_to_use)
+
+        buffer_step6 = io.BytesIO()
+        current_img.save(buffer_step6, format='PNG')
+        buffer_step6.seek(0)
+        await interaction.followup.send(content="**Bước 6: Sau khi vẽ tên người dùng**", file=discord.File(fp=buffer_step6, filename='step6_username_text.png'))
+        print(f"DEBUG_STEP: Đã gửi ảnh sau khi vẽ tên người dùng.")
+
+        # Bước 7: Vẽ thanh line trang trí
+        name_actual_height = _get_text_height("M", font_name, draw)
+        line_y = int(name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME)
+        line_color_rgb = stroke_color_rgb
+        actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
+        _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb, actual_line_length)
+
+        buffer_step7 = io.BytesIO()
+        current_img.save(buffer_step7, format='PNG')
+        buffer_step7.seek(0)
+        await interaction.followup.send(content="**Bước 7: Sau khi vẽ thanh line ngang (Ảnh cuối cùng)**", file=discord.File(fp=buffer_step7, filename='step7_final_with_line.png'))
+        print(f"DEBUG_STEP: Đã gửi ảnh sau khi vẽ line ngang (ảnh cuối cùng).")
+
+        await interaction.followup.send("Quá trình debug ảnh đã hoàn tất. Vui lòng kiểm tra các ảnh để xác định bước gây lỗi.")
+
+    except discord.errors.Forbidden:
+        print(f"LỖI DISCORD DEBUGIMAGE: Bot thiếu quyền 'Gửi tin nhắn' hoặc 'Đính kèm tệp' trong kênh này cho lệnh debugimage. Vui lòng kiểm tra lại quyền.")
+        await interaction.followup.send("Bot không có đủ quyền để gửi các ảnh debug. Vui lòng kiểm tra quyền hạn của bot.")
+    except Exception as e:
+        await interaction.followup.send(f"Có lỗi xảy ra trong quá trình debug ảnh: `{e}`. Vui lòng kiểm tra console của bot để biết thêm chi tiết.")
+        print(f"LỖI TỔNG QUAN DEBUGIMAGE: Có lỗi xảy ra: {e}")
+        traceback.print_exc()
+        
 # --- Slash Command mới: /welcomepreview (xuất ảnh hoàn chỉnh, không debug) ---
 @bot.tree.command(name="welcomepreview", description="Tạo và gửi ảnh chào mừng hoàn chỉnh cho người dùng (không có debug).")
 @app_commands.describe(user="Người dùng bạn muốn xem trước (mặc định là chính bạn).")
