@@ -818,6 +818,9 @@ async def start_bot_and_flask():
     await asyncio.sleep(5)
     print("Bắt đầu khởi động bot Discord...")
 
+   # Dòng mới thêm vào đây:
+    print(f"DEBUG_TOKEN: TOKEN value (first 5 chars): {TOKEN[:5] if TOKEN else 'None'}") 
+
     try:
         await bot.start(TOKEN)
     except discord.errors.HTTPException as e:
