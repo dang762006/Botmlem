@@ -490,6 +490,15 @@ async def create_welcome_image(member):
     welcome_text_x = int((img_width - welcome_text_width) / 2)
     welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar) # Vị trí Y cho WELCOME
     
+    # DEBUG TRỰC QUAN: Vẽ hình chữ nhật màu đỏ ở vị trí chữ WELCOME
+    debug_welcome_box_height = _get_text_height(welcome_text, font_welcome, draw)
+    draw.rectangle(
+        [welcome_text_x, welcome_text_y_pos, 
+         welcome_text_x + welcome_text_width, welcome_text_y_pos + debug_welcome_box_height], 
+        fill=(255, 0, 0, 128) # Đỏ bán trong suốt
+    )
+    print(f"DEBUG_VISUAL: Đã vẽ debug box cho WELCOME tại ({welcome_text_x}, {welcome_text_y_pos})")
+
     _draw_text_with_shadow(
         draw, welcome_text, font_welcome, welcome_text_x, welcome_text_y_pos,
         main_text_color, shadow_color, shadow_offset_x, shadow_offset_y
@@ -522,6 +531,15 @@ async def create_welcome_image(member):
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
     name_text_y = int(welcome_text_y_pos + welcome_actual_height + 10)
 
+    # DEBUG TRỰC QUAN: Vẽ hình chữ nhật màu xanh lá ở vị trí tên người dùng
+    debug_name_box_height = _get_text_height(name_text_display, font_name, draw)
+    draw.rectangle(
+        [name_text_x, name_text_y, 
+         name_text_x + name_text_width, name_text_y + debug_name_box_height], 
+        fill=(0, 255, 0, 128) # Xanh lá bán trong suốt
+    )
+    print(f"DEBUG_VISUAL: Đã vẽ debug box cho Tên người dùng tại ({name_text_x}, {name_text_y})")
+
     _draw_text_with_shadow(
         draw, name_text_display, font_name, name_text_x, name_text_y,
         name_and_line_color, shadow_color, shadow_offset_x, shadow_offset_y
@@ -544,7 +562,7 @@ async def create_welcome_image(member):
 # --- Các tác vụ của bot ---
 @tasks.loop(minutes=1)
 async def activity_heartbeat():
-    sleep_duration = random.randint(1 * 60, 3 * 60)
+    sleep_duration = random.randint(3 * 60, 10 * 60) # Tăng thời gian ngủ lên
     print(
         f"DEBUG: Tác vụ activity_heartbeat đang ngủ {sleep_duration // 60} phút để chuẩn bị cập nhật trạng thái..."
     )
