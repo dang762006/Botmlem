@@ -1,3 +1,4 @@
+import logging  # <-- Đảm bảo dòng này có ở đây
 import discord
 from discord.ext import commands, tasks
 from discord import app_commands
