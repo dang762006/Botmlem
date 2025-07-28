@@ -660,6 +660,19 @@ async def before_random_message_sender():
 # --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
+    print(f"DEBUG: Bot đã sẵn sàng và đăng nhập với tên: {bot.user} (ID: {bot.user.id})") # <-- Thêm dòng này
+    try:
+        synced = await bot.tree.sync()
+        print(f"DEBUG: Đã đồng bộ {len(synced)} lệnh slash.")
+    except Exception as e:
+        print(f"LỖI: Không thể đồng bộ lệnh slash: {e}")
+
+    # Tiếp tục với các hành động khác của on_ready
+    print(f"Flask server đang chạy trên cổng {os.environ.get('PORT', 10000)} (để Health Check).")
+    print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
+    # Khởi động tác vụ tự ping Flask server
+    send_self_ping_task.start()
+    print("DEBUG: bot.start(TOKEN) đã hoàn thành (có thể thành công hoặc lỗi được xử lý).")
     """Xử lý sự kiện khi bot sẵn sàng."""
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
