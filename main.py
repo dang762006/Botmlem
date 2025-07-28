@@ -827,9 +827,14 @@ async def start_bot_and_flask():
     )
     await asyncio.sleep(5)
     print("Bắt đầu khởi động bot Discord...")
+    
+    # THÊM DÒNG NÀY ĐỂ DEBUG
+    print("DEBUG: Đang cố gắng gọi bot.start(TOKEN)...") 
 
     try:
         await bot.start(TOKEN)
+        # THÊM DÒNG NÀY ĐỂ DEBUG NẾU ĐĂNG NHẬP THÀNH CÔNG
+        print("DEBUG: bot.start(TOKEN) đã hoàn thành (có thể thành công hoặc lỗi được xử lý).")
     except discord.errors.HTTPException as e:
         if e.status == 429:
             print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e.text}")
@@ -843,7 +848,11 @@ async def start_bot_and_flask():
             print(f"Một lỗi HTTP khác đã xảy ra khi đăng nhập: {e}")
             raise
     except Exception as e:
-        print(f"Một lỗi không xác định đã xảy ra: {e}")
+        # Đã chỉnh sửa thêm để in ra tên hàm
+        print(f"Một lỗi không xác định đã xảy ra trong quá trình bot.start(): {e}") 
+    
+    # THÊM DÒNG NÀY ĐỂ DEBUG
+    print("DEBUG: Hàm start_bot_and_flask đã kết thúc.") 
 
 if __name__ == '__main__':
     if not TOKEN:
