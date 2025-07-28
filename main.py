@@ -675,7 +675,6 @@ async def on_ready():
         print(
             f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands cho Guild {YOUR_GUILD_ID}: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
         )
-        print(
 
     # Tải tất cả các tài nguyên tĩnh khi bot sẵn sàng (chỉ một lần)
     _load_static_assets()
