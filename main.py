@@ -55,10 +55,10 @@ def run_flask():
     print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
 
     app.run(host='0.0.0.0', port=port,
-            debug=False)
+            debug=False)A
 
 # --- Cấu hình Bot Discord ---
-TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Hoặc TOKEN = os.getenv('TOKEN') nếu biến môi trường của bạn là 'TOKEN'
+TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 intents = discord.Intents.default()
 intents.members = True
