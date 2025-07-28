@@ -656,15 +656,26 @@ async def on_ready():
     """Xử lý sự kiện khi bot sẵn sàng."""
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
+    # Đặt ID của máy chủ Discord của bạn vào đây
+    # Bạn có thể lấy ID máy chủ bằng cách bật chế độ nhà phát triển trong Discord,
+    # sau đó click chuột phải vào tên máy chủ và chọn "Copy ID".
+    YOUR_GUILD_ID = 913046733796311040 # THAY THẾ BẰNG ID MÁY CHỦ CỦA BẠN!
+
     try:
-        # Xóa các lệnh cũ trước khi đồng bộ để tránh nhân đôi
-        bot.tree.clear_commands(guild=None) # Xóa lệnh toàn cầu hoặc guild cụ thể nếu cần
-        synced = await bot.tree.sync()
-        print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
+        # Xóa các lệnh cũ TRONG MÁY CHỦ CỤ THỂ này trước khi đồng bộ
+        # Điều này giúp đảm bảo chỉ có các lệnh mới nhất xuất hiện
+        guild_obj = discord.Object(id=YOUR_GUILD_ID)
+        bot.tree.clear_commands(guild=guild_obj)
+
+        # Đồng bộ lệnh CHỈ cho máy chủ của bạn
+        synced = await bot.tree.sync(guild=guild_obj)
+
+        print(f"Đã đồng bộ {len(synced)} lệnh slash commands cho Guild ID: {YOUR_GUILD_ID}. 🎉")
     except Exception as e:
         print(
-            f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
+            f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands cho Guild {YOUR_GUILD_ID}: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
         )
+        print(
 
     # Tải tất cả các tài nguyên tĩnh khi bot sẵn sàng (chỉ một lần)
     _load_static_assets()
