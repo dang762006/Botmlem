@@ -55,10 +55,10 @@ def run_flask():
     print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
 
     app.run(host='0.0.0.0', port=port,
-            debug=False)A
+            debug=False)
 
 # --- Cấu hình Bot Discord ---
-TOKEN = os.getenv('DISCORD_BOT_TOKEN')
+TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Hoặc TOKEN = os.getenv('TOKEN') nếu biến môi trường của bạn là 'TOKEN'
 
 intents = discord.Intents.default()
 intents.members = True
@@ -817,9 +817,6 @@ async def start_bot_and_flask():
     )
     await asyncio.sleep(5)
     print("Bắt đầu khởi động bot Discord...")
-
-   # Dòng mới thêm vào đây:
-    print(f"DEBUG_TOKEN: TOKEN value (first 5 chars): {TOKEN[:5] if TOKEN else 'None'}") 
 
     try:
         await bot.start(TOKEN)
