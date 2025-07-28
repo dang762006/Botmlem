@@ -313,7 +313,7 @@ def _load_static_assets():
         print(f"LỖỖI STROKE: Lỗi khi mở ảnh stroke overlay '{STROKE_IMAGE_PATH}': {e}. Sẽ bỏ qua stroke này.")
         GLOBAL_STROKE_OVERLAY_IMAGE = None
 
-    # Tải mask avatar <--- ĐÃ THÊM LẠI PHẦN NÀY
+    # Tải mask avatar
     try:
         temp_mask = Image.open(AVATAR_MASK_IMAGE_PATH).convert("L")
         GLOBAL_AVATAR_MASK_IMAGE = temp_mask.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
@@ -360,7 +360,7 @@ async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
     # Resize avatar về kích thước mong muốn
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
 
-    # *** Áp dụng mask hình tròn bằng GLOBAL_AVATAR_MASK_IMAGE *** <--- CẬP NHẬT LOGIC NÀY
+    # Áp dụng mask hình tròn bằng GLOBAL_AVATAR_MASK_IMAGE
     if GLOBAL_AVATAR_MASK_IMAGE:
         # GLOBAL_AVATAR_MASK_IMAGE đã được resize sẵn
         masked_avatar = Image.composite(avatar_img, Image.new('RGBA', avatar_img.size, (0, 0, 0, 0)), GLOBAL_AVATAR_MASK_IMAGE)
@@ -444,7 +444,7 @@ def process_text_for_drawing(original_text, main_font, symbol_font, replacement_
 
 async def create_welcome_image(member):
     # 1. Sử dụng font đã tải sẵn và kiểm tra lại (chỉ để đảm bảo)
-    if not all([GLOBAL_FONT_WELCOME, GLOBAL_FONT_NAME, GLOBAL_FONT_SYMBOL, GLOBAL_AVATAR_MASK_IMAGE]): # <--- Thêm GLOBAL_AVATAR_MASK_IMAGE vào kiểm tra
+    if not all([GLOBAL_FONT_WELCOME, GLOBAL_FONT_NAME, GLOBAL_FONT_SYMBOL, GLOBAL_AVATAR_MASK_IMAGE]):
         print("CẢNH BÁO: Một số tài nguyên chưa được tải sẵn. Đang cố gắng tải lại. (Điều này không nên xảy ra sau on_ready)")
         _load_static_assets() # Tải lại nếu chưa được tải (fallback)
 
@@ -471,7 +471,6 @@ async def create_welcome_image(member):
     masked_avatar, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
 
     # Xác định màu chủ đạo từ avatar
-    # Sửa đổi: Hàm get_dominant_color giờ trả về 3 giá trị
     dominant_color_from_avatar, original_image_mode, processed_avatar_io = None, None, None
     if avatar_bytes:
         dominant_color_from_avatar, original_image_mode, processed_avatar_io = await get_dominant_color(avatar_bytes, color_count=20)
@@ -492,6 +491,11 @@ async def create_welcome_image(member):
     avatar_x = int(img_width / 2 - AVATAR_SIZE / 2)
     avatar_y = int(img_height * 0.36) - AVATAR_SIZE // 2
     y_offset_from_avatar = 20
+    
+    # --- THÊM CÁC DÒNG DEBUG NÀY ---
+    print(f"DEBUG_POS: Kích thước ảnh: {img_width}x{img_height}")
+    print(f"DEBUG_POS: Vị trí Avatar: ({avatar_x}, {avatar_y}) Kích thước: {AVATAR_SIZE}x{AVATAR_SIZE}")
+    # --- KẾT THÚC CÁC DÒNG DEBUG ---
 
     # *** VẼ HÌNH TRÒN BÁN TRONG SUỐT PHÍA SAU AVATAR ***
     background_circle_color_rgba = stroke_color_rgb + (128,) # 128 là giá trị alpha cho 50% opacity
@@ -521,6 +525,12 @@ async def create_welcome_image(member):
     welcome_text_x = int((img_width - welcome_text_width) / 2)
     welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar) # Vị trí Y cho WELCOME
     
+    # --- THÊM CÁC DÒNG DEBUG NÀY ---
+    print(f"DEBUG_POS: Welcome Text: '{welcome_text}'")
+    print(f"DEBUG_POS: Kích thước Welcome Text: {welcome_text_width}x{_get_text_height(welcome_text, font_welcome, draw)}")
+    print(f"DEBUG_POS: Vị trí Welcome Text: ({welcome_text_x}, {welcome_text_y_pos})")
+    # --- KẾT THÚC CÁC DÒNG DEBUG ---
+
     # Tạo màu đổ bóng cho chữ WELCOME
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
@@ -557,6 +567,12 @@ async def create_welcome_image(member):
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
     name_text_y = int(welcome_text_y_pos + welcome_actual_height + 10)
+
+    # --- THÊM CÁC DÒNG DEBUG NÀY ---
+    print(f"DEBUG_POS: Tên người dùng: '{name_text_raw}'")
+    print(f"DEBUG_POS: Kích thước Tên người dùng: {name_text_width}x{_get_text_height('M', font_name, draw)}") # Dùng 'M' để ước tính chiều cao font
+    print(f"DEBUG_POS: Vị trí Tên người dùng: ({name_text_x}, {name_text_y})")
+    # --- KẾT THÚC CÁC DÒNG DEBUG ---
 
     shadow_color_name_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
@@ -677,8 +693,7 @@ async def on_ready():
     YOUR_GUILD_ID = 913046733796311040 # THAY THẾ BẰNG ID MÁY CHỦ CỦA BẠN!
 
     try:
-        # Xóa các lệnh cũ TRONG MÁY CHỦ CỤ THỂ này trước khi đồng bộ
-        # Điều này giúp đảm bảo chỉ có các lệnh mới nhất xuất hiện
+        # Xóa các lệnh cũ TRONG MÁY CHỦ CỤ CẢNH này trước khi đồng bộ
         guild_obj = discord.Object(id=YOUR_GUILD_ID)
         bot.tree.clear_commands(guild=guild_obj)
 
