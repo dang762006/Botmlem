@@ -11,6 +11,7 @@ import requests
 import threading
 from flask import Flask
 from colorthief import ColorThief
+import traceback # Import thư viện traceback để in chi tiết lỗi
 
 # Dòng kiểm tra này sẽ xuất hiện ngay khi bot bắt đầu chạy
 print("--- BOT IS RUNNING NEW CODE! ---")
@@ -176,7 +177,7 @@ async def get_dominant_color(image_bytes, color_count=20):
             r, g, b = color_rgb
             h, s, l = rgb_to_hsl(r, g, b)
 
-            if (l < 0.5 and s < 0.25) or (l > 0.90):
+            if (l < 0.5 and s < 0.25) or (l > 0.90): # Loại bỏ màu quá tối/xám hoặc quá sáng
                 continue
             
             is_vibrant_and_bright = (l >= 0.5 and s > 0.4)
@@ -209,9 +210,11 @@ async def get_dominant_color(image_bytes, color_count=20):
         if qualified_colors:
             dominant_color = qualified_colors[0]['color']
         else:
-            best_fallback_color = (0, 252, 233)
+            # Fallback nếu không có màu phù hợp theo tiêu chí, chọn màu sáng nhất nhưng không phải gần đen
+            best_fallback_color = (0, 252, 233) # Vẫn là Cyan mặc định
             max_l_fallback = -1
             for color in palette:
+                # Tránh các màu gần như đen hoàn toàn khi fallback
                 if not (color[0] < 30 and color[1] < 30 and color[2] < 30):
                     _, _, l = rgb_to_hsl(*color)
                     if l > max_l_fallback:
@@ -223,6 +226,7 @@ async def get_dominant_color(image_bytes, color_count=20):
 
     except Exception as e:
         print(f"LỖI COLORTHIEF: Không thể lấy bảng màu từ avatar: {e}")
+        traceback.print_exc() # In chi tiết lỗi
         # Trả về default color, mode và một BytesIO trống rỗng nếu lỗi
         return (0, 252, 233), 'UNKNOWN', io.BytesIO()
 
@@ -237,7 +241,7 @@ NAME_FONT_SIZE = 34
 AVATAR_SIZE = 210 # Kích thước avatar sau khi resize
 BACKGROUND_IMAGE_PATH = "welcome.png"
 STROKE_IMAGE_PATH = "stroke.png"
-AVATAR_MASK_IMAGE_PATH = "avatar.png" # <--- Đã thêm lại dòng này
+AVATAR_MASK_IMAGE_PATH = "avatar.png"
 DEFAULT_IMAGE_DIMENSIONS = (872, 430) # Kích thước ảnh nền mặc định
 LINE_THICKNESS = 3 # Độ dày của line dưới tên
 LINE_VERTICAL_OFFSET_FROM_NAME = 13 # Khoảng cách từ tên đến đường line
@@ -250,16 +254,16 @@ GLOBAL_FONT_NAME = None
 GLOBAL_FONT_SYMBOL = None
 GLOBAL_BACKGROUND_IMAGE = None
 GLOBAL_STROKE_OVERLAY_IMAGE = None
-GLOBAL_AVATAR_MASK_IMAGE = None # <--- Đã thêm lại dòng này
+GLOBAL_AVATAR_MASK_IMAGE = None
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
 def _load_static_assets():
     """Tải font, ảnh nền, ảnh stroke một lần duy nhất khi bot khởi động."""
     global GLOBAL_FONT_WELCOME, GLOBAL_FONT_NAME, GLOBAL_FONT_SYMBOL
-    global GLOBAL_BACKGROUND_IMAGE, GLOBAL_STROKE_OVERLAY_IMAGE, GLOBAL_AVATAR_MASK_IMAGE # <--- Đã thêm GLOBAL_AVATAR_MASK_IMAGE
+    global GLOBAL_BACKGROUND_IMAGE, GLOBAL_STROKE_OVERLAY_IMAGE, GLOBAL_AVATAR_MASK_IMAGE
 
-    print("DEBUG: Đang tải các tài nguyên tĩnh (fonts, ảnh nền, stroke, mask)...") # <--- Cập nhật thông báo
+    print("DEBUG: Đang tải các tài nguyên tĩnh (fonts, ảnh nền, stroke, mask)...")
 
     # Tải Fonts
     try:
@@ -268,22 +272,24 @@ def _load_static_assets():
         print(f"DEBUG: Đã tải font chính thành công: {FONT_MAIN_PATH}")
     except Exception as e:
         print(f"LỖI FONT: Không thể tải font chính '{FONT_MAIN_PATH}'. Sử dụng Arial. Chi tiết: {e}")
+        traceback.print_exc()
         try:
             GLOBAL_FONT_WELCOME = ImageFont.truetype("arial.ttf", WELCOME_FONT_SIZE)
             GLOBAL_FONT_NAME = ImageFont.truetype("arial.ttf", NAME_FONT_SIZE)
-            print("DEBUG: Đã sử dụng font Arial.ttf cho văn bản chính.")
+            print("DEBUG: Đã sử dụng font Arial.ttf cho văn bản chính (fallback).")
         except Exception:
             GLOBAL_FONT_WELCOME = ImageFont.load_default().font_variant(size=WELCOME_FONT_SIZE)
             GLOBAL_FONT_NAME = ImageFont.load_default().font_variant(size=NAME_FONT_SIZE)
-            print("DEBUG: Đã sử dụng font mặc định của Pillow cho văn bản chính.")
+            print("DEBUG: Đã sử dụng font mặc định của Pillow cho văn bản chính (fallback cuối cùng).")
     
     try:
         GLOBAL_FONT_SYMBOL = ImageFont.truetype(FONT_SYMBOL_PATH, NAME_FONT_SIZE)
         print(f"DEBUG: Đã tải font biểu tượng thành công: {FONT_SYMBOL_PATH}")
     except Exception as e:
         print(f"LỖI FONT: Không thể tải font biểu tượng '{FONT_SYMBOL_PATH}'. Sử dụng font mặc định cho biểu tượng. Chi tiết: {e}")
+        traceback.print_exc()
         GLOBAL_FONT_SYMBOL = ImageFont.load_default().font_variant(size=NAME_FONT_SIZE)
-        print("DEBUG: Đã sử dụng font mặc định của Pillow cho biểu tượng.")
+        print("DEBUG: Đã sử dụng font mặc định của Pillow cho biểu tượng (fallback).")
 
     # Tải ảnh nền
     try:
@@ -297,6 +303,7 @@ def _load_static_assets():
         GLOBAL_BACKGROUND_IMAGE = Image.new('RGBA', DEFAULT_IMAGE_DIMENSIONS, color=(0, 0, 0, 255))
     except Exception as e:
         print(f"LỖI ẢNH NỀN: Lỗi khi mở ảnh nền '{BACKGROUND_IMAGE_PATH}': {e}. Tạo nền màu mặc định.")
+        traceback.print_exc()
         GLOBAL_BACKGROUND_IMAGE = Image.new('RGBA', DEFAULT_IMAGE_DIMENSIONS, color=(0, 0, 0, 255))
 
     # Tải ảnh stroke overlay
@@ -311,6 +318,7 @@ def _load_static_assets():
         GLOBAL_STROKE_OVERLAY_IMAGE = None
     except Exception as e:
         print(f"LỖỖI STROKE: Lỗi khi mở ảnh stroke overlay '{STROKE_IMAGE_PATH}': {e}. Sẽ bỏ qua stroke này.")
+        traceback.print_exc()
         GLOBAL_STROKE_OVERLAY_IMAGE = None
 
     # Tải mask avatar
@@ -323,6 +331,7 @@ def _load_static_assets():
         GLOBAL_AVATAR_MASK_IMAGE = None
     except Exception as e:
         print(f"LỖI MASK AVATAR: Lỗi khi mở ảnh mask '{AVATAR_MASK_IMAGE_PATH}': {e}. Avatar sẽ không được bo tròn.")
+        traceback.print_exc()
         GLOBAL_AVATAR_MASK_IMAGE = None
 
     print("DEBUG: Đã hoàn tất tải các tài nguyên tĩnh.")
@@ -349,11 +358,17 @@ async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
                         print(f"LỖI AVATAR: Không thể tải avatar. Trạng thái HTTP: {resp.status}. Sử dụng avatar màu xám mặc định.")
         except Exception as e:
             print(f"LỖI AVATAR: Lỗi mạng khi tải avatar: {e}. Sử dụng avatar màu xám mặc định.")
+            traceback.print_exc()
 
     # Mở ảnh avatar hoặc tạo ảnh mặc định nếu không tải được
     if avatar_bytes:
         data = io.BytesIO(avatar_bytes)
-        avatar_img = Image.open(data).convert("RGBA")
+        try:
+            avatar_img = Image.open(data).convert("RGBA")
+        except Exception as e:
+            print(f"LỖI AVATAR: Không thể mở hoặc chuyển đổi định dạng avatar đã tải: {e}. Tạo ảnh xám mặc định.")
+            traceback.print_exc()
+            avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
     else:
         avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
 
@@ -408,13 +423,15 @@ def is_basic_char(char):
     if '0' <= char <= '9':
         return True
     
-    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=@_|=~`!^*""" + '\\'
+    special_chars_to_keep = """.,?!;:'"()[]{}<>+-*/=@_|=~`!^*""" + '\\' # Thêm các dấu câu, ký hiệu thông thường
     if char in special_chars_to_keep or char.isspace():
         return True
     
+    # Phạm vi Unicode cho các ký tự Tiếng Việt (Latin-1 Supplement, Latin Extended-A/B, Vietnamese)
     unicode_ord = ord(char)
     if (0x00C0 <= unicode_ord <= 0x017F) or \
-       (0x1EA0 <= unicode_ord <= 0x1EFF):
+       (0x1EA0 <= unicode_ord <= 0x1EFF) or \
+       (0x20AB == unicode_ord) : # Thêm ký tự ₫ (đồng) nếu cần
         return True
     
     return False
@@ -436,6 +453,7 @@ def process_text_for_drawing(original_text, main_font, symbol_font, replacement_
             processed_parts.append((char, main_font))
             total_width += temp_draw_obj.textlength(char, font=main_font)
         else:
+            print(f"CẢNH BÁO FONT: Ký tự '{char}' (Unicode: {ord(char)}) không được coi là ký tự cơ bản và sẽ được thay thế bằng '{replacement_char}'.")
             processed_parts.append((replacement_char, symbol_font))
             total_width += temp_draw_obj.textlength(replacement_char, font=symbol_font)
     
@@ -551,16 +569,31 @@ async def create_welcome_image(member):
         name_text_raw, font_name, font_symbol, replacement_char='✦', temp_draw_obj=temp_draw_for_text_calc
     )
     
-    max_chars_for_name = 25
-    if name_text_width > img_width * 0.8:
-        avg_char_width = name_text_width / len(processed_name_parts) if processed_name_parts else 1
-        chars_to_remove = int((name_text_width - img_width * 0.8) / avg_char_width) + 3
-        if len(processed_name_parts) > chars_to_remove and len(processed_name_parts) > 3:
-            processed_name_parts = processed_name_parts[:-chars_to_remove]
+    # Kiểm tra và cắt tên nếu quá dài
+    # Sử dụng một tỷ lệ phần trăm của chiều rộng ảnh để quyết định giới hạn
+    max_name_width_ratio = 0.8 # Tên không vượt quá 80% chiều rộng ảnh
+    if name_text_width > img_width * max_name_width_ratio:
+        print(f"CẢNH BÁO: Tên người dùng '{name_text_raw}' quá dài ({name_text_width}px), sẽ bị cắt bớt.")
+        # Ước tính số ký tự cần giữ để vừa với 80% chiều rộng
+        target_width = img_width * max_name_width_ratio
+        current_width = 0
+        truncated_parts = []
+        for char, font_to_use in processed_name_parts:
+            char_width = temp_draw_for_text_calc.textlength(char, font=font_to_use)
+            if current_width + char_width < target_width - temp_draw_for_text_calc.textlength('...', font=font_name):
+                truncated_parts.append((char, font_to_use))
+                current_width += char_width
+            else:
+                break
+        
+        if truncated_parts:
+            processed_name_parts = truncated_parts
             processed_name_parts.append(('...', font_name))
-            name_text_width = 0
-            for char, font_to_use in processed_name_parts:
-                name_text_width += temp_draw_for_text_calc.textlength(char, font=font_to_use)
+            name_text_width = current_width + temp_draw_for_text_calc.textlength('...', font=font_name)
+        else: # Trường hợp tên rất ngắn nhưng vẫn vượt quá giới hạn hoặc quá khó cắt
+            processed_name_parts = [('...', font_name)]
+            name_text_width = temp_draw_for_text_calc.textlength('...', font=font_name)
+        print(f"DEBUG: Tên sau khi cắt: {''.join([p[0] for p in processed_name_parts])}, chiều rộng mới: {name_text_width}px")
 
 
     name_text_x = int((img_width - name_text_width) / 2)
@@ -570,7 +603,7 @@ async def create_welcome_image(member):
 
     # --- THÊM CÁC DÒNG DEBUG NÀY ---
     print(f"DEBUG_POS: Tên người dùng: '{name_text_raw}'")
-    print(f"DEBUG_POS: Kích thước Tên người dùng: {name_text_width}x{_get_text_height('M', font_name, draw)}") # Dùng 'M' để ước tính chiều cao font
+    print(f"DEBUG_POS: Kích thước Tên người dùng (ước tính): {name_text_width}x{_get_text_height('M', font_name, draw)}") # Dùng 'M' để ước tính chiều cao font
     print(f"DEBUG_POS: Vị trí Tên người dùng: ({name_text_x}, {name_text_y})")
     # --- KẾT THÚC CÁC DÒNG DEBUG ---
 
@@ -590,7 +623,7 @@ async def create_welcome_image(member):
         current_x += draw.textlength(char, font=font_to_use)
 
     # 9. Vẽ thanh line trang trí
-    name_actual_height = _get_text_height("M", font_name, draw)
+    name_actual_height = _get_text_height("M", font_name, draw) # Vẫn dùng 'M' để ước tính chiều cao font cho vị trí line
     line_y = int(name_text_y + name_actual_height + LINE_VERTICAL_OFFSET_FROM_NAME)
     line_color_rgb = stroke_color_rgb
     actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR)
@@ -632,6 +665,7 @@ async def activity_heartbeat():
     except Exception as e:
         print(
             f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
+        traceback.print_exc()
 
 @activity_heartbeat.before_loop
 async def before_activity_heartbeat():
@@ -669,6 +703,7 @@ async def random_message_sender():
                     print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
                 except Exception as e:
                     print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
+                    traceback.print_exc()
             else:
                 print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
         else:
@@ -693,7 +728,7 @@ async def on_ready():
     YOUR_GUILD_ID = 913046733796311040 # THAY THẾ BẰNG ID MÁY CHỦ CỦA BẠN!
 
     try:
-        # Xóa các lệnh cũ TRONG MÁY CHỦ CỤ CẢNH này trước khi đồng bộ
+        # Xóa các lệnh cũ TRONG MÁY CHỦ CỤ THỂ này trước khi đồng bộ
         guild_obj = discord.Object(id=YOUR_GUILD_ID)
         bot.tree.clear_commands(guild=guild_obj)
 
@@ -705,6 +740,7 @@ async def on_ready():
         print(
             f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands cho Guild {YOUR_GUILD_ID}: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
         )
+        traceback.print_exc()
 
     # Tải tất cả các tài nguyên tĩnh khi bot sẵn sàng (chỉ một lần)
     _load_static_assets()
@@ -727,21 +763,22 @@ async def on_member_join(member):
 
     if channel is None:
         print(
-            f"LỖI KÊNH: Không tìm thấy kênh với ID {channel_id}. Vui lòng kiểm tra lại ID kênh hoặc bot chưa có quyền truy cập kênh đó."
+            f"LỖI KÊNH ON_MEMBER_JOIN: Không tìm thấy kênh với ID {channel_id}. Vui lòng kiểm tra lại ID kênh hoặc bot chưa có quyền truy cập kênh đó."
         )
         return
 
     if not channel.permissions_for(member.guild.me).send_messages or \
        not channel.permissions_for(member.guild.me).attach_files:
         print(
-            f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn hoặc đính kèm file trong kênh {channel.name} (ID: {channel_id}). Vui lòng kiểm tra lại quyền của bot trong Discord."
+            f"LỖI QUYỀN ON_MEMBER_JOIN: Bot không có quyền gửi tin nhắn hoặc đính kèm file trong kênh {channel.name} (ID: {channel_id}). Vui lòng kiểm tra lại quyền của bot trong Discord."
+        )
+        await channel.send(
+            f"Lỗi: Bot không có đủ quyền gửi tin nhắn hoặc đính kèm file trong kênh này. Vui lòng liên hệ quản trị viên."
         )
         return
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member.display_name}...")
-        # Tạo ảnh welcome, nhưng không cần debug chi tiết ở đây nữa
-        # Chỉ lấy image_bytes, các giá trị khác có thể bỏ qua
         image_bytes, _, _ = await create_welcome_image(member)
         await channel.send(
             f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
@@ -749,15 +786,17 @@ async def on_member_join(member):
         print(f"Đã gửi ảnh chào mừng thành công cho {member.display_name}!")
     except discord.errors.HTTPException as e:
         print(
-            f"LỖI HTTP DISCORD: Lỗi khi gửi ảnh chào mừng (có thể do giới hạn tốc độ hoặc quyền): {e}"
+            f"LỖI HTTP DISCORD ON_MEMBER_JOIN: Lỗi khi gửi ảnh chào mừng (có thể do giới hạn tốc độ hoặc quyền): {e}"
         )
+        traceback.print_exc() # In chi tiết lỗi
         await channel.send(
-            f"Chào mừng {member.mention} đã đến với {member.guild.name}! (Có lỗi khi tạo ảnh chào mừng, xin lỗi!)"
+            f"Chào mừng {member.mention} đã đến với {member.guild.name}! (Bot gặp lỗi khi tạo hoặc gửi ảnh chào mừng. Vui lòng kiểm tra log bot để biết thêm chi tiết.)"
         )
     except Exception as e:
-        print(f"LỖỖI CHÀO MỪNG KHÁC: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
+        print(f"LỖI TỔNG QUAN ON_MEMBER_JOIN: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
+        traceback.print_exc() # In chi tiết lỗi
         await channel.send(
-            f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
+            f"Chào mừng {member.mention} đã đến với {member.guild.name}! (Bot gặp lỗi không xác định khi tạo hoặc gửi ảnh chào mừng. Vui lòng kiểm tra log bot.)")
 
 # --- Slash Command để TEST tạo ảnh welcome (có debug) ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng (có thông tin debug).")
@@ -798,15 +837,17 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
             await interaction.followup.send(content=debug_message, files=files_to_send)
             print(f"DEBUG: Đã gửi ảnh test chào mừng và thông tin debug cho {member_to_test.display_name} thành công trong Discord.")
         except discord.errors.Forbidden:
-            print(f"LỖI DISCORD: Bot thiếu quyền 'Gửi tin nhắn' hoặc 'Đính kèm tệp' trong kênh này cho lệnh testwelcome. Vui lòng kiểm tra lại quyền.")
+            print(f"LỖI DISCORD TESTWELCOME: Bot thiếu quyền 'Gửi tin nhắn' hoặc 'Đính kèm tệp' trong kênh này cho lệnh testwelcome. Vui lòng kiểm tra lại quyền.")
             await interaction.followup.send("Bot không có đủ quyền để gửi tin nhắn debug hoặc tệp đính kèm trong kênh này. Vui lòng kiểm tra quyền hạn của bot.")
         except Exception as send_error:
-            print(f"LỖI KHI GỬI FOLLOWUP: {send_error}")
+            print(f"LỖI KHI GỬI FOLLOWUP TESTWELCOME: {send_error}")
+            traceback.print_exc()
             await interaction.followup.send(f"Có lỗi xảy ra khi gửi thông tin debug: `{send_error}`. Vui lòng kiểm tra console của bot để biết thêm chi tiết.")
         print(f"DEBUG: Đã hoàn tất xử lý lệnh testwelcome cho {member_to_test.display_name}.")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
-        print(f"LỖỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
+        print(f"LỖỖI TỔNG QUAN TESTWELCOME: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
+        traceback.print_exc()
 
 # --- Slash Command mới: /welcomepreview (xuất ảnh hoàn chỉnh, không debug) ---
 @bot.tree.command(name="welcomepreview", description="Tạo và gửi ảnh chào mừng hoàn chỉnh cho người dùng (không có debug).")
@@ -828,15 +869,17 @@ async def welcomepreview_slash(interaction: discord.Interaction, user: discord.M
             await interaction.followup.send(content=f"Đây là ảnh chào mừng cho {member_to_test.mention}:", files=[file_to_send])
             print(f"DEBUG: Đã gửi ảnh chào mừng hoàn chỉnh cho {member_to_test.display_name} thành công trong Discord.")
         except discord.errors.Forbidden:
-            print(f"LỖI DISCORD: Bot thiếu quyền 'Gửi tin nhắn' hoặc 'Đính kèm tệp' trong kênh này cho lệnh welcomepreview. Vui lòng kiểm tra lại quyền.")
+            print(f"LỖI DISCORD WELCOMEPREVIEW: Bot thiếu quyền 'Gửi tin nhắn' hoặc 'Đính kèm tệp' trong kênh này cho lệnh welcomepreview. Vui lòng kiểm tra lại quyền.")
             await interaction.followup.send("Bot không có đủ quyền để gửi ảnh xem trước trong kênh này. Vui lòng kiểm tra quyền hạn của bot.")
         except Exception as send_error:
-            print(f"LỖI KHI GỬI FOLLOWUP (preview): {send_error}")
+            print(f"LỖI KHI GỬI FOLLOWUP WELCOMEPREVIEW: {send_error}")
+            traceback.print_exc()
             await interaction.followup.send(f"Có lỗi xảy ra khi gửi ảnh xem trước: `{send_error}`. Vui lòng kiểm tra console của bot để biết thêm chi tiết.")
         print(f"DEBUG: Đã hoàn tất xử lý lệnh welcomepreview cho {member_to_test.display_name}.")
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh xem trước: {e}")
-        print(f"LỖỖI PREVIEW: Có lỗi khi tạo hoặc gửi ảnh xem trước: {e}")
+        print(f"LỖỖI TỔNG QUAN WELCOMEPREVIEW: Có lỗi khi tạo hoặc gửi ảnh xem trước: {e}")
+        traceback.print_exc()
 
 # --- Slash Command mới: /skibidi ---
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
@@ -871,9 +914,11 @@ async def start_bot_and_flask():
             )
         else:
             print(f"Một lỗi HTTP khác đã xảy ra khi đăng nhập: {e}")
+            traceback.print_exc() # In chi tiết lỗi
             raise
     except Exception as e:
         print(f"Một lỗi không xác định đã xảy ra: {e}")
+        traceback.print_exc() # In chi tiết lỗi
 
 if __name__ == '__main__':
     if not TOKEN:
