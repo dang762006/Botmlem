@@ -12,6 +12,12 @@ import threading
 from flask import Flask
 from colorthief import ColorThief
 
+# Cấu hình logging cho discord.py
+# Điều này sẽ giúp hiển thị các thông báo từ thư viện discord.py trong log của bạn
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+logging.basicConfig(level=logging.INFO, handlers=[handler])
+
 # Dòng kiểm tra này sẽ xuất hiện ngay khi bot bắt đầu chạy
 print("--- BOT IS RUNNING NEW CODE! ---")
 
