@@ -17,7 +17,7 @@ import traceback # Import thư viện traceback để in chi tiết lỗi
 print("--- BOT IS RUNNING NEW CODE! ---")
 
 # --- Khởi tạo Flask app ---
-app = Flask(__name__)
+app = Flask(__协name__)
 
 @app.route('/')
 def home():
@@ -625,7 +625,6 @@ async def create_welcome_image(member):
     )
     shadow_color_name = (*shadow_color_name_rgb, 255)
 
-    # Vẽ tên người dùng với đổ bóng và màu sắc
     current_x = float(name_text_x)
     for char, font_to_use in processed_name_parts:
         if font_to_use is None: # Fallback an toàn nếu font bị lỗi
@@ -903,14 +902,10 @@ async def on_ready():
     print(f'{bot.user} đã online và sẵn sàng hoạt động!')
     _load_static_assets() # Đảm bảo hàm này được gọi để tải tài nguyên
 
-    # THAY THẾ DÒNG ĐỒNG BỘ LỆNH SLASH HIỆN TẠI BẰNG ĐOẠN NÀY
-    # Lệnh này sẽ đồng bộ các lệnh slash CHỈ cho server có ID bạn đã định nghĩa ở trên
+    # Đây là phần đã được sửa đổi: Bỏ dòng 'bot.tree.copy_global_commands'
     try:
         guild_obj = discord.Object(id=GUILD_ID)
-        # Bắt buộc bot.tree phải được truyền guild_obj để đồng bộ cho guild cụ thể
-        # Nếu không có dòng này, các lệnh toàn cầu sẽ không tự động có trên guild đó.
-        bot.tree.copy_global_commands(guild=guild_obj)
-        await bot.tree.sync(guild=guild_obj)
+        await bot.tree.sync(guild=guild_obj) # Chỉ giữ lại dòng này để đồng bộ cho server cụ thể
         print(f"Đã đồng bộ lệnh slash cho server ID {GUILD_ID} thành công.")
     except Exception as e:
         print(f"LỖI KHI ĐỒNG BỘ LỆNH SLASH CHO GUILD {GUILD_ID}: {e}")
