@@ -725,16 +725,18 @@ async def on_member_join(member):
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
 # --- Slash Command để TEST tạo ảnh welcome ---
-@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
+# default_permissions=discord.Permissions(administrator=True) chỉ cho phép quản trị viên
+@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.",
+                   default_permissions=discord.Permissions(administrator=True)) # Thêm dòng này
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True)
+@app_commands.checks.has_permissions(administrator=True) # Giữ nguyên kiểm tra này để đảm bảo an toàn
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
     await interaction.response.defer(thinking=True)
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
-        image_bytes = await create_welcome_image(member_to_test)
+        image_bytes = await create_welcome_image(member_to_test) # Đảm bảo create_welcome_image đã được định nghĩa
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
         print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
     except Exception as e:
