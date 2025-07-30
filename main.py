@@ -903,13 +903,12 @@ async def on_ready():
     _load_static_assets() # Đảm bảo hàm này được gọi để tải tài nguyên
 
     # Đây là phần đã được sửa đổi: Bỏ dòng 'bot.tree.copy_global_commands'
-    try:
-        guild_obj = discord.Object(id=GUILD_ID)
-        await bot.tree.sync(guild=guild_obj) # Chỉ giữ lại dòng này để đồng bộ cho server cụ thể
-        print(f"Đã đồng bộ lệnh slash cho server ID {GUILD_ID} thành công.")
-    except Exception as e:
-        print(f"LỖI KHI ĐỒNG BỘ LỆNH SLASH CHO GUILD {GUILD_ID}: {e}")
-        traceback.print_exc()
+   try:
+    await bot.tree.sync() # Đồng bộ toàn cầu (sẽ mất nhiều thời gian để cập nhật trên Discord)
+    print(f"Đã đồng bộ lệnh slash toàn cầu thành công.")
+except Exception as e:
+    print(f"LỖI KHI ĐỒNG BỘ LỆNH SLASH TOÀN CẦU: {e}")
+    traceback.print_exc()
 
     random_message_sender.start()
     activity_heartbeat.start()
