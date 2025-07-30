@@ -17,7 +17,7 @@ import traceback # Import thư viện traceback để in chi tiết lỗi
 print("--- BOT IS RUNNING NEW CODE! ---")
 
 # --- Khởi tạo Flask app ---
-app = Flask(__协name__)
+app = Flask(__name__) # ĐÃ SỬA LỖI Ở ĐÂY: __协name__ thành __name__
 
 @app.route('/')
 def home():
