@@ -657,8 +657,6 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
     try:
-        # Xóa các lệnh cũ trước khi đồng bộ để tránh nhân đôi
-        bot.tree.clear_commands(guild=None) # Xóa lệnh toàn cầu hoặc guild cụ thể nếu cần
         synced = await bot.tree.sync()
         print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
     except Exception as e:
@@ -701,7 +699,6 @@ async def on_member_join(member):
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member.display_name}...")
         # Tạo ảnh welcome, nhưng không cần debug chi tiết ở đây nữa
-        # Chỉ lấy image_bytes, các giá trị khác có thể bỏ qua
         image_bytes, _, _ = await create_welcome_image(member)
         await channel.send(
             f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
@@ -719,8 +716,8 @@ async def on_member_join(member):
         await channel.send(
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# --- Slash Command để TEST tạo ảnh welcome (có debug) ---
-@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng (có thông tin debug).")
+# --- Slash Command để TEST tạo ảnh welcome ---
+@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
 @app_commands.checks.has_permissions(administrator=True) # Chỉ quản trị viên mới dùng được lệnh này
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
@@ -734,6 +731,10 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         
         # Thêm các dòng print này ngay sau dòng trên
         print(f"DEBUG_TESTWELCOME: original_image_mode = {original_image_mode}")
+        # dominant_color_from_avatar được trả về từ create_welcome_image, nhưng không được lưu ở đây.
+        # Để in ra dominant_color_from_avatar ở đây, cần phải lấy nó từ create_welcome_image
+        # hoặc in trực tiếp trong get_dominant_color
+        # (Đã có print trong get_dominant_color rồi: DEBUG_COLORTHIEF: Bảng màu thô từ ColorThief: ...)
         print(f"DEBUG_TESTWELCOME: processed_avatar_io.tell() = {processed_avatar_io.tell() if processed_avatar_io else 'None'}")
         
         # Gửi ảnh welcome chính
@@ -767,36 +768,6 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
-
-# --- Slash Command mới: /welcomepreview (xuất ảnh hoàn chỉnh, không debug) ---
-@bot.tree.command(name="welcomepreview", description="Tạo và gửi ảnh chào mừng hoàn chỉnh cho người dùng (không có debug).")
-@app_commands.describe(user="Người dùng bạn muốn xem trước (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True) # Chỉ quản trị viên mới dùng được lệnh này
-async def welcomepreview_slash(interaction: discord.Interaction, user: discord.Member = None):
-    member_to_test = user if user else interaction.user
-    await interaction.response.defer(thinking=True) # Bot sẽ "đang nghĩ" để tránh timeout
-
-    try:
-        print(f"DEBUG: Đang tạo ảnh chào mừng hoàn chỉnh cho {member_to_test.display_name}...")
-        # Chỉ lấy image_bytes, các giá trị debug khác không cần
-        image_bytes, _, _ = await create_welcome_image(member_to_test)
-        
-        # Gửi ảnh welcome chính, không kèm debug
-        file_to_send = discord.File(fp=image_bytes, filename='welcome_preview.png')
-        
-        try:
-            await interaction.followup.send(content=f"Đây là ảnh chào mừng cho {member_to_test.mention}:", files=[file_to_send])
-            print(f"DEBUG: Đã gửi ảnh chào mừng hoàn chỉnh cho {member_to_test.display_name} thành công trong Discord.")
-        except discord.errors.Forbidden:
-            print(f"LỖI DISCORD: Bot thiếu quyền 'Gửi tin nhắn' hoặc 'Đính kèm tệp' trong kênh này cho lệnh welcomepreview. Vui lòng kiểm tra lại quyền.")
-            await interaction.followup.send("Bot không có đủ quyền để gửi ảnh xem trước trong kênh này. Vui lòng kiểm tra quyền hạn của bot.")
-        except Exception as send_error:
-            print(f"LỖI KHI GỬI FOLLOWUP (preview): {send_error}")
-            await interaction.followup.send(f"Có lỗi xảy ra khi gửi ảnh xem trước: `{send_error}`. Vui lòng kiểm tra console của bot để biết thêm chi tiết.")
-        print(f"DEBUG: Đã hoàn tất xử lý lệnh welcomepreview cho {member_to_test.display_name}.")
-    except Exception as e:
-        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh xem trước: {e}")
-        print(f"LỖỖI PREVIEW: Có lỗi khi tạo hoặc gửi ảnh xem trước: {e}")
 
 # --- Slash Command mới: /skibidi ---
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
