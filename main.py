@@ -724,10 +724,19 @@ async def on_member_join(member):
         await channel.send(
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
+# --- Slash Command mới: /skibidi ---
+# default_permissions=None cho phép mọi người dùng
+@bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
+@app_commands.default_permissions(None) # Sửa ở đây: Sử dụng decorator app_commands.default_permissions
+async def skibidi(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
+    )
+
 # --- Slash Command để TEST tạo ảnh welcome ---
 # default_permissions=discord.Permissions(administrator=True) chỉ cho phép quản trị viên
-@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.",
-                   default_permissions=discord.Permissions(administrator=True)) # Thêm dòng này
+@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
+@app_commands.default_permissions(administrator=True) # Sửa ở đây: Sử dụng decorator app_commands.default_permissions
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
 @app_commands.checks.has_permissions(administrator=True) # Giữ nguyên kiểm tra này để đảm bảo an toàn
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
@@ -736,19 +745,17 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
-        image_bytes = await create_welcome_image(member_to_test) # Đảm bảo create_welcome_image đã được định nghĩa
-        await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
-        print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
+        # Đảm bảo create_welcome_image đã được định nghĩa và hoạt động
+        # image_bytes = await create_welcome_image(member_to_test)
+        # await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
+        # print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
+        # Tạm thời thay bằng tin nhắn để test lỗi này
+        await interaction.followup.send(f"Đã nhận lệnh testwelcome cho {member_to_test.display_name}. (Chức năng tạo ảnh đã tạm tắt để test lỗi quyền.)")
+
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
-# --- Slash Command mới: /skibidi ---
-@bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.", default_permissions=None)
-async def skibidi(interaction: discord.Interaction):
-    await interaction.response.send_message(
-        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
-    )
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
     """Hàm async để khởi động cả Flask và bot Discord."""
