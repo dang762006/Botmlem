@@ -903,7 +903,7 @@ async def on_ready():
     _load_static_assets() # Đảm bảo hàm này được gọi để tải tài nguyên
 
     # Đây là phần đã được sửa đổi: Bỏ dòng 'bot.tree.copy_global_commands'
-   try:
+try:
     await bot.tree.sync() # Đồng bộ toàn cầu (sẽ mất nhiều thời gian để cập nhật trên Discord)
     print(f"Đã đồng bộ lệnh slash toàn cầu thành công.")
 except Exception as e:
