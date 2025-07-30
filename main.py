@@ -17,7 +17,7 @@ import traceback # Import thư viện traceback để in chi tiết lỗi
 print("--- BOT IS RUNNING NEW CODE! ---")
 
 # --- Khởi tạo Flask app ---
-app = Flask(__name__) # ĐÃ SỬA LỖI Ở ĐÂY: __协name__ thành __name__
+app = Flask(__name__)
 
 @app.route('/')
 def home():
@@ -29,37 +29,16 @@ def health_check():
     """Endpoint Health Check riêng biệt cho Render.com hoặc Replit."""
     return "OK", 200
 
-def send_self_ping():
-    """Gửi yêu cầu HTTP đến chính Flask server để giữ nó hoạt động."""
-    port = int(os.environ.get("PORT", 10000))
-    url = f"http://localhost:{port}/healthz"
-    try:
-        response = requests.get(url, timeout=5)
-        print(
-            f"DEBUG: Tự ping Flask server: {url} - Status: {response.status_code}"
-        )
-    except requests.exceptions.RequestException as e:
-        print(f"LỖI SELF-PING: Không thể tự ping Flask server: {e}")
-
-    next_ping_interval = random.randint(3 * 60, 10 * 60)
-    threading.Timer(next_ping_interval, send_self_ping).start()
-    print(
-        f"DEBUG: Lập lịch tự ping tiếp theo sau {next_ping_interval // 60} phút."
-    )
-
 def run_flask():
-    """Chạy Flask app trong một luồng riêng biệt và bắt đầu tự ping."""
+    """Chạy Flask app trong một luồng riêng biệt."""
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
-
-    threading.Timer(10, send_self_ping).start() # Bắt đầu tự ping sau 10 giây khởi động Flask
-    print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
-
-    app.run(host='0.0.0.0', port=port,
-            debug=False)
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 # --- Cấu hình Bot Discord ---
-TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Hoặc TOKEN = os.getenv('TOKEN') nếu biến môi trường của bạn là 'TOKEN'
+BOT_TOKEN = os.getenv('DISCORD_BOT_TOKEN') # Sử dụng BOT_TOKEN để tránh nhầm lẫn với các biến khác
+GUILD_ID = 913046733796311040 # ID của server bạn muốn bot hoạt động
+WELCOME_CHANNEL_ID = int(os.getenv('WELCOME_CHANNEL_ID', '0')) # Lấy từ biến môi trường, mặc định 0 nếu không có
 
 intents = discord.Intents.default()
 intents.members = True
@@ -73,9 +52,30 @@ DEFAULT_IMAGE_DIMENSIONS = (872, 430)
 AVATAR_SIZE = 210
 LINE_VERTICAL_OFFSET_FROM_NAME = 10
 LINE_LENGTH_FACTOR = 0.65
-GUILD_ID = 913046733796311040 # ID của server bạn muốn bot hoạt động
 
-# --- Các hàm xử lý màu sắc (giữ nguyên logic phức tạp của bạn) ---
+# --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
+FONT_MAIN_PATH = "1FTV-Designer.otf"
+FONT_SYMBOL_PATH = "subset-DejaVuSans.ttf"
+WELCOME_FONT_SIZE = 60
+NAME_FONT_SIZE = 34
+BACKGROUND_IMAGE_PATH = "welcome.png"
+STROKE_IMAGE_PATH = "stroke.png"
+AVATAR_MASK_IMAGE_PATH = "avatar.png"
+LINE_THICKNESS = 3 # Độ dày của line dưới tên
+
+# --- GLOBAL VARIABLES FOR PRE-LOADED ASSETS ---
+# Sẽ được tải một lần khi bot khởi động
+GLOBAL_FONT_WELCOME = None
+GLOBAL_FONT_NAME = None
+GLOBAL_FONT_SYMBOL = None
+GLOBAL_BACKGROUND_IMAGE = None
+GLOBAL_STROKE_OVERLAY_IMAGE = None
+GLOBAL_AVATAR_MASK_IMAGE = None
+
+avatar_cache = {}
+CACHE_TTL = 300 # Thời gian sống của cache avatar (giây)
+
+# --- Các hàm xử lý màu sắc ---
 def rgb_to_hsl(r, g, b):
     r /= 255.0
     g /= 255.0
@@ -122,11 +122,6 @@ def hsl_to_rgb(h, s, l):
     b_new = hsl_to_rgb_component(p, q, h - 1 / 3)
 
     return (int(r_new * 255), int(g_new * 255), int(b_new * 255))
-
-def is_dark_color(rgb_color, lightness_threshold=0.3):
-    """Kiểm tra xem màu RGB có tối không dựa trên độ sáng (L trong HSL)."""
-    _, _, l = rgb_to_hsl(*rgb_color)
-    return l < lightness_threshold
 
 def adjust_color_brightness_saturation(rgb_color,
                                        brightness_factor=1.0,
@@ -237,28 +232,56 @@ async def get_dominant_color(image_bytes, color_count=20):
         # Trả về default color, mode và một BytesIO trống rỗng nếu lỗi
         return (0, 252, 233), 'UNKNOWN', io.BytesIO()
 
-avatar_cache = {}
-CACHE_TTL = 300 # Thời gian sống của cache avatar (giây)
+async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
+    """Tải và xử lý avatar, có dùng cache và áp dụng mask tròn.
+       Trả về ảnh avatar đã mask và bytes gốc của avatar.
+    """
+    avatar_bytes = None
+    # Kiểm tra cache
+    if member_avatar_url in cache and (asyncio.get_event_loop().time() - cache[member_avatar_url]['timestamp']) < CACHE_TTL:
+        avatar_bytes = cache[member_avatar_url]['data']
+        print(f"DEBUG: Lấy avatar từ cache cho {member_avatar_url}.")
+    else:
+        print(f"DEBUG: Đang tải avatar từ URL: {member_avatar_url}")
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(str(member_avatar_url)) as resp:
+                    if resp.status == 200:
+                        avatar_bytes = await resp.read()
+                        cache[member_avatar_url] = {'data': avatar_bytes, 'timestamp': asyncio.get_event_loop().time()}
+                        print(f"DEBUG: Đã tải và lưu avatar vào cache.")
+                    else:
+                        print(f"LỖI AVATAR: Không thể tải avatar. Trạng thái HTTP: {resp.status}. Sử dụng avatar màu xám mặc định.")
+        except Exception as e:
+            print(f"LỖI AVATAR: Lỗi mạng khi tải avatar: {e}. Sử dụng avatar màu xám mặc định.")
+            traceback.print_exc()
 
-# --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
-FONT_MAIN_PATH = "1FTV-Designer.otf"
-FONT_SYMBOL_PATH = "subset-DejaVuSans.ttf"
-WELCOME_FONT_SIZE = 60
-NAME_FONT_SIZE = 34
-BACKGROUND_IMAGE_PATH = "welcome.png"
-STROKE_IMAGE_PATH = "stroke.png"
-AVATAR_MASK_IMAGE_PATH = "avatar.png"
-LINE_THICKNESS = 3 # Độ dày của line dưới tên
+    # Mở ảnh avatar hoặc tạo ảnh mặc định nếu không tải được
+    if avatar_bytes:
+        data = io.BytesIO(avatar_bytes)
+        try:
+            avatar_img = Image.open(data).convert("RGBA")
+        except Exception as e:
+            print(f"LỖI AVATAR: Không thể mở hoặc chuyển đổi định dạng avatar đã tải: {e}. Tạo ảnh xám mặc định.")
+            traceback.print_exc()
+            avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
+    else:
+        avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
 
+    # Resize avatar về kích thước mong muốn
+    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
 
-# --- GLOBAL VARIABLES FOR PRE-LOADED ASSETS ---
-# Sẽ được tải một lần khi bot khởi động
-GLOBAL_FONT_WELCOME = None
-GLOBAL_FONT_NAME = None
-GLOBAL_FONT_SYMBOL = None
-GLOBAL_BACKGROUND_IMAGE = None
-GLOBAL_STROKE_OVERLAY_IMAGE = None
-GLOBAL_AVATAR_MASK_IMAGE = None
+    # Áp dụng mask hình tròn bằng GLOBAL_AVATAR_MASK_IMAGE
+    if GLOBAL_AVATAR_MASK_IMAGE:
+        # GLOBAL_AVATAR_MASK_IMAGE đã được resize sẵn
+        masked_avatar = Image.composite(avatar_img, Image.new('RGBA', avatar_img.size, (0, 0, 0, 0)), GLOBAL_AVATAR_MASK_IMAGE)
+        print(f"DEBUG: Đã áp dụng mask tròn cho avatar bằng GLOBAL_AVATAR_MASK_IMAGE.")
+    else:
+        # Fallback nếu không tải được mask, vẫn trả về avatar đã resize
+        masked_avatar = avatar_img
+        print(f"CẢNH BÁO: Không có mask avatar được tải sẵn. Trả về avatar không bo tròn.")
+    
+    return masked_avatar, avatar_bytes
 
 # --- CÁC HÀM HỖ TRỢ CHO create_welcome_image ---
 
@@ -340,58 +363,6 @@ def _load_static_assets():
 
     print("DEBUG: Đã hoàn tất tải các tài nguyên tĩnh.")
 
-async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
-    """Tải và xử lý avatar, có dùng cache và áp dụng mask tròn.
-       Trả về ảnh avatar đã mask và bytes gốc của avatar.
-    """
-    avatar_bytes = None
-    # Kiểm tra cache
-    if member_avatar_url in cache and (asyncio.get_event_loop().time() - cache[member_avatar_url]['timestamp']) < CACHE_TTL:
-        avatar_bytes = cache[member_avatar_url]['data']
-        print(f"DEBUG: Lấy avatar từ cache cho {member_avatar_url}.")
-    else:
-        print(f"DEBUG: Đang tải avatar từ URL: {member_avatar_url}")
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(str(member_avatar_url)) as resp:
-                    if resp.status == 200:
-                        avatar_bytes = await resp.read()
-                        cache[member_avatar_url] = {'data': avatar_bytes, 'timestamp': asyncio.get_event_loop().time()}
-                        print(f"DEBUG: Đã tải và lưu avatar vào cache.")
-                    else:
-                        print(f"LỖI AVATAR: Không thể tải avatar. Trạng thái HTTP: {resp.status}. Sử dụng avatar màu xám mặc định.")
-        except Exception as e:
-            print(f"LỖI AVATAR: Lỗi mạng khi tải avatar: {e}. Sử dụng avatar màu xám mặc định.")
-            traceback.print_exc()
-
-    # Mở ảnh avatar hoặc tạo ảnh mặc định nếu không tải được
-    if avatar_bytes:
-        data = io.BytesIO(avatar_bytes)
-        try:
-            avatar_img = Image.open(data).convert("RGBA")
-        except Exception as e:
-            print(f"LỖI AVATAR: Không thể mở hoặc chuyển đổi định dạng avatar đã tải: {e}. Tạo ảnh xám mặc định.")
-            traceback.print_exc()
-            avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
-    else:
-        avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
-
-    # Resize avatar về kích thước mong muốn
-    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-
-    # Áp dụng mask hình tròn bằng GLOBAL_AVATAR_MASK_IMAGE
-    if GLOBAL_AVATAR_MASK_IMAGE:
-        # GLOBAL_AVATAR_MASK_IMAGE đã được resize sẵn
-        masked_avatar = Image.composite(avatar_img, Image.new('RGBA', avatar_img.size, (0, 0, 0, 0)), GLOBAL_AVATAR_MASK_IMAGE)
-        print(f"DEBUG: Đã áp dụng mask tròn cho avatar bằng GLOBAL_AVATAR_MASK_IMAGE.")
-    else:
-        # Fallback nếu không tải được mask, vẫn trả về avatar đã resize
-        masked_avatar = avatar_img
-        print(f"CẢNH BÁO: Không có mask avatar được tải sẵn. Trả về avatar không bo tròn.")
-    
-    return masked_avatar, avatar_bytes
-
-
 def _draw_text_with_shadow(draw_obj, text, font, x, y, main_color, shadow_color, offset_x, offset_y):
     """Vẽ văn bản với hiệu ứng đổ bóng đơn giản với offset tùy chỉnh."""
     draw_obj.text((int(x + offset_x), int(y + offset_y)), text, font=font, fill=shadow_color)
@@ -410,10 +381,14 @@ def _draw_simple_decorative_line(draw_obj, img_width, line_y, line_color_rgb, ac
 
 def _get_text_width(text, font, draw_obj):
     """Tính toán chiều rộng của văn bản."""
+    if font is None: # Fallback an toàn
+        font = ImageFont.load_default()
     return draw_obj.textlength(text, font=font)
 
 def _get_text_height(text, font, draw_obj):
     """Tính toán chiều cao của văn bản."""
+    if font is None: # Fallback an toàn
+        font = ImageFont.load_default()
     bbox = draw_obj.textbbox((0, 0), text, font=font)
     return bbox[3] - bbox[1]
 
@@ -453,20 +428,25 @@ def process_text_for_drawing(original_text, main_font, symbol_font, replacement_
         temp_draw_obj = ImageDraw.Draw(Image.new('RGBA', (1, 1))) 
 
     for char in original_text:
+        current_font = main_font if is_basic_char(char) else symbol_font
+        if current_font is None: # Fallback an toàn
+            current_font = ImageFont.load_default()
+            print(f"CẢNH BÁO FONT: Font cho ký tự '{char}' là None, sử dụng font mặc định.")
+
         if is_basic_char(char):
-            processed_parts.append((char, main_font))
-            total_width += temp_draw_obj.textlength(char, font=main_font)
+            processed_parts.append((char, current_font))
+            total_width += temp_draw_obj.textlength(char, font=current_font)
         else:
             print(f"CẢNH BÁO FONT: Ký tự '{char}' (Unicode: {ord(char)}) không được coi là ký tự cơ bản và sẽ được thay thế bằng '{replacement_char}'.")
-            processed_parts.append((replacement_char, symbol_font))
-            total_width += temp_draw_obj.textlength(replacement_char, font=symbol_font)
+            processed_parts.append((replacement_char, current_font))
+            total_width += temp_draw_obj.textlength(replacement_char, font=current_font)
     
     return processed_parts, total_width
 
 
 async def create_welcome_image(member):
     # 1. Sử dụng font đã tải sẵn và kiểm tra lại (chỉ để đảm bảo)
-    if not all([GLOBAL_FONT_WELCOME, GLOBAL_FONT_NAME, GLOBAL_FONT_SYMBOL, GLOBAL_AVATAR_MASK_IMAGE]):
+    if not all([GLOBAL_FONT_WELCOME, GLOBAL_FONT_NAME, GLOBAL_FONT_SYMBOL, GLOBAL_AVATAR_MASK_IMAGE, GLOBAL_BACKGROUND_IMAGE, GLOBAL_STROKE_OVERLAY_IMAGE]):
         print("CẢNH BÁO: Một số tài nguyên chưa được tải sẵn. Đang cố gắng tải lại. (Điều này không nên xảy ra sau on_ready)")
         _load_static_assets() # Tải lại nếu chưa được tải (fallback)
 
@@ -493,11 +473,11 @@ async def create_welcome_image(member):
     masked_avatar, avatar_bytes = await _get_and_process_avatar(avatar_url, AVATAR_SIZE, avatar_cache)
 
     # Xác định màu chủ đạo từ avatar
-    dominant_color_from_avatar, original_image_mode, processed_avatar_io = None, None, None
+    dominant_color_from_avatar = (0, 252, 233) # Default Cyan
     if avatar_bytes:
-        dominant_color_from_avatar, original_image_mode, processed_avatar_io = await get_dominant_color(avatar_bytes, color_count=20)
-    if dominant_color_from_avatar is None:
-        dominant_color_from_avatar = (0, 252, 233) # Default Cyan
+        temp_dominant_color, _, _ = await get_dominant_color(avatar_bytes, color_count=20)
+        if temp_dominant_color:
+            dominant_color_from_avatar = temp_dominant_color
 
     # Điều chỉnh màu sắc cho viền và chữ dựa trên màu chủ đạo được chọn
     stroke_color_rgb = adjust_color_brightness_saturation(
@@ -514,10 +494,8 @@ async def create_welcome_image(member):
     avatar_y = int(img_height * 0.36) - AVATAR_SIZE // 2
     y_offset_from_avatar = 20
     
-    # --- THÊM CÁC DÒNG DEBUG NÀY ---
     print(f"DEBUG_POS: Kích thước ảnh: {img_width}x{img_height}")
     print(f"DEBUG_POS: Vị trí Avatar: ({avatar_x}, {avatar_y}) Kích thước: {AVATAR_SIZE}x{AVATAR_SIZE}")
-    # --- KẾT THÚC CÁC DÒNG DEBUG ---
 
     # *** VẼ HÌNH TRÒN BÁN TRONG SUỐT PHÍA SAU AVATAR ***
     background_circle_color_rgba = stroke_color_rgb + (128,) # 128 là giá trị alpha cho 50% opacity
@@ -528,7 +506,7 @@ async def create_welcome_image(member):
         fill=background_circle_color_rgba
     )
     img = Image.alpha_composite(img, circle_overlay_layer)
-    print(f"DEBUG: Đã vẽ hình tròn bán trong suốt phía sau avatar.")
+    print(f"DEBUG_IMAGE: Đã vẽ hình tròn bán trong suốt phía sau avatar.")
 
     # --- 5. Dán ảnh stroke PNG đã tô màu (sử dụng GLOBAL_STROKE_OVERLAY_IMAGE) ---
     if GLOBAL_STROKE_OVERLAY_IMAGE:
@@ -536,22 +514,20 @@ async def create_welcome_image(member):
         final_stroke_layer = Image.composite(tint_layer, Image.new('RGBA', GLOBAL_STROKE_OVERLAY_IMAGE.size, (0,0,0,0)), GLOBAL_STROKE_OVERLAY_IMAGE)
         img.paste(final_stroke_layer, (0, 0), final_stroke_layer)
     else:
-        print(f"CẢNH BÁO: Không có ảnh stroke overlay được tải trước. Sẽ bỏ qua stroke này.")
+        print(f"CẢNH BÁO_IMAGE: Không có ảnh stroke overlay được tải trước. Sẽ bỏ qua stroke này.")
 
-    # --- 6. Dán Avatar (đã được cắt tròn bởi mask trong _get_and_process_avatar) ---
+    # 6. Dán avatar đã xử lý lên ảnh chính
     img.paste(masked_avatar, (avatar_x, avatar_y), masked_avatar)
 
-    # 7. Vẽ chữ WELCOME
+    # 7. Vẽ chữ "WELCOME"
     welcome_text = "WELCOME"
     welcome_text_width = draw.textlength(welcome_text, font=font_welcome)
     welcome_text_x = int((img_width - welcome_text_width) / 2)
-    welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar) # Vị trí Y cho WELCOME
-    
-    # --- THÊM CÁC DÒNG DEBUG NÀY ---
+    welcome_text_y_pos = int(avatar_y + AVATAR_SIZE + y_offset_from_avatar)
+
     print(f"DEBUG_POS: Welcome Text: '{welcome_text}'")
     print(f"DEBUG_POS: Kích thước Welcome Text: {welcome_text_width}x{_get_text_height(welcome_text, font_welcome, draw)}")
     print(f"DEBUG_POS: Vị trí Welcome Text: ({welcome_text_x}, {welcome_text_y_pos})")
-    # --- KẾT THÚC CÁC DÒNG DEBUG ---
 
     # Tạo màu đổ bóng cho chữ WELCOME
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
@@ -609,11 +585,9 @@ async def create_welcome_image(member):
     
     name_text_y = int(welcome_text_y_pos + welcome_actual_height + 10) # Khoảng cách 10px giữa WELCOME và tên
 
-    # --- THÊM CÁC DÒNG DEBUG NÀY ---
     print(f"DEBUG_POS: Tên người dùng: '{name_text_raw}'")
     print(f"DEBUG_POS: Kích thước Tên người dùng (ước tính): {name_text_width}x{_get_text_height('M', font_name, draw)}") # Dùng 'M' để ước tính chiều cao trung bình
     print(f"DEBUG_POS: Vị trí Tên người dùng: ({name_text_x}, {name_text_y})")
-    # --- KẾT THÚC CÁC DÒNG DEBUG ---
 
     # Tạo màu đổ bóng cho chữ tên
     shadow_color_name_rgb = adjust_color_brightness_saturation(
@@ -631,8 +605,7 @@ async def create_welcome_image(member):
             font_to_use = ImageFont.load_default()
             print(f"LỖI FONT: Font cho ký tự '{char}' là None, sử dụng font mặc định.")
 
-        draw.text((int(current_x + shadow_offset_x), int(name_text_y + shadow_offset_y)), char, font=font_to_use, fill=shadow_color_name)
-        draw.text((int(current_x), int(name_text_y)), char, font=font_to_use, fill=stroke_color)
+        _draw_text_with_shadow(draw, char, font_to_use, current_x, name_text_y, stroke_color, shadow_color_name, shadow_offset_x, shadow_offset_y)
         current_x += draw.textlength(char, font=font_to_use)
 
     # 9. Vẽ thanh line trang trí dưới tên
@@ -642,17 +615,71 @@ async def create_welcome_image(member):
     actual_line_length = int(name_text_width * LINE_LENGTH_FACTOR) # Độ dài của line theo tỷ lệ tên
     _draw_simple_decorative_line(draw, img_width, line_y, line_color_rgb, actual_line_length)
     
-    # 10. Chuyển đổi ảnh thành bytes và trả về
+    # 10. Lưu ảnh vào buffer và trả về
     final_buffer = io.BytesIO()
-    img.save(final_buffer, format='PNG')
+    img.save(final_buffer, format="PNG")
     final_buffer.seek(0)
+    print(f"DEBUG_IMAGE: Đã tạo ảnh chào mừng thành công cho {member.display_name}.")
     return final_buffer
 
-# --- Slash Command: /welcomepreview ---
-@bot.tree.command(name="welcomepreview", description="Tạo ảnh chào mừng xem trước (chỉ admin).")
+# --- CÁC SỰ KIỆN BOT ---
+@bot.event
+async def on_ready():
+    print(f"\n--- BOT ĐÃ SẴN SÀNG! ---")
+    print(f"Đăng nhập với vai trò: {bot.user} (ID: {bot.user.id})")
+    
+    _load_static_assets() # Tải các tài nguyên tĩnh khi bot khởi động
+    
+    try:
+        # Đồng bộ lệnh slash cho guild cụ thể
+        guild_obj = discord.Object(id=GUILD_ID)
+        await bot.tree.sync(guild=guild_obj)
+        print(f"Đã đồng bộ lệnh slash cho server ID {GUILD_ID} thành công.")
+    except Exception as e:
+        print(f"LỖI KHI ĐỒNG BỘ LỆNH SLASH: {e}")
+        traceback.print_exc()
+
+    print(f"Bot '{bot.user.name}' đã sẵn sàng và đang hoạt động!")
+    random_message_sender.start()
+    activity_heartbeat.start()
+    flask_ping_task.start() # Khởi động task ping Flask
+
+@bot.event
+async def on_member_join(member):
+    # Chỉ xử lý nếu thành viên tham gia đúng GUILD_ID được cấu hình
+    if member.guild.id != GUILD_ID:
+        return
+
+    # Lấy kênh chào mừng
+    welcome_channel = bot.get_channel(WELCOME_CHANNEL_ID)
+
+    if welcome_channel:
+        try:
+            print(f"Đang tạo ảnh chào mừng cho: {member.display_name} ({member.id})")
+            image_buffer = await create_welcome_image(member)
+            await welcome_channel.send(
+                f"Chào mừng {member.mention} đã đến với **{member.guild.name}**! "
+                f"Chúng ta hiện có {member.guild.member_count} thành viên.",
+                file=discord.File(image_buffer, "welcome.png")
+            )
+            print(f"Đã gửi tin nhắn chào mừng và ảnh cho {member.display_name}.")
+        except Exception as e:
+            print(f"LỖI KHI GỬI TIN NHẮN CHÀO MỪNG CHO {member.display_name}: {e}")
+            traceback.print_exc()
+            await welcome_channel.send(f"Có lỗi xảy ra khi tạo ảnh chào mừng cho {member.mention}.")
+    else:
+        print(f"LỖI: Không tìm thấy kênh chào mừng với ID {WELCOME_CHANNEL_ID}. Vui lòng kiểm tra lại 'WELCOME_CHANNEL_ID' trong biến môi trường.")
+
+# --- ĐỊNH NGHĨA CÁC LỆNH SLASH ---
+
+@bot.tree.command(name="skibidi", description="skibididopdopyesyes", guild=discord.Object(id=GUILD_ID))
+async def skibidi_slash(interaction: discord.Interaction):
+    await interaction.response.send_message("skibididopdopyesyes")
+
+@bot.tree.command(name="welcomepreview", description="Xem trước tin nhắn chào mừng (Chỉ dành cho quản trị viên)", guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True) # Chỉ quản trị viên mới dùng được lệnh này
-async def welcomepreview_slash(interaction: discord.Interaction, user: discord.Member = None):
+@app_commands.checks.has_permissions(administrator=True)
+async def welcome_preview_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
     await interaction.response.defer(thinking=True) # Bot sẽ "đang nghĩ" để tránh timeout
 
@@ -667,11 +694,10 @@ async def welcomepreview_slash(interaction: discord.Interaction, user: discord.M
         print(f"LỖI TỔNG QUAN WELCOMEPREVIEW: Có lỗi xảy ra: {e}")
         traceback.print_exc()
 
-# --- Slash Command: /testwelcome ---
-@bot.tree.command(name="testwelcome", description="Kiểm tra chức năng tạo ảnh chào mừng.")
+@bot.tree.command(name="testwelcome", description="Kiểm tra tin nhắn chào mừng (Chỉ dành cho quản trị viên)", guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là bạn).")
 @app_commands.checks.has_permissions(administrator=True)
-async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
+async def test_welcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
     await interaction.response.defer(thinking=True) # Bot sẽ "đang nghĩ" để tránh timeout
 
@@ -695,8 +721,7 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         print(f"LỖI TỔNG QUAN TESTWELCOME: Có lỗi xảy ra: {e}")
         traceback.print_exc()
 
-# --- Slash Command mới: /debugimage ---
-@bot.tree.command(name="debugimage", description="Tạo ảnh chào mừng theo từng bước để debug (chỉ admin).")
+@bot.tree.command(name="debugimage", description="Tạo ảnh chào mừng theo từng bước để debug (chỉ admin).", guild=discord.Object(id=GUILD_ID))
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
 @app_commands.checks.has_permissions(administrator=True) # Chỉ quản trị viên mới dùng được lệnh này
 async def debugimage_slash(interaction: discord.Interaction, user: discord.Member = None):
@@ -890,30 +915,6 @@ async def debugimage_slash(interaction: discord.Interaction, user: discord.Membe
         print(f"LỖI TỔNG QUAN DEBUGIMAGE: Có lỗi xảy ra: {e}")
         traceback.print_exc()
 
-# --- Slash Command: /skibidi (Nếu có) ---
-# Ví dụ về một lệnh đơn giản để đảm bảo bot hoạt động
-@bot.tree.command(name="skibidi", description="Skibidi bop bop yes yes!")
-async def skibidi_slash(interaction: discord.Interaction):
-    await interaction.response.send_message("Skibidi bop bop yes yes! 🚽")
-
-# --- Xử lý sự kiện bot online ---
-@bot.event
-async def on_ready():
-    print(f'{bot.user} đã online và sẵn sàng hoạt động!')
-    _load_static_assets() # Đảm bảo hàm này được gọi để tải tài nguyên
-
-    # Đây là phần đã được sửa đổi: Bỏ dòng 'bot.tree.copy_global_commands'
-try:
-    await bot.tree.sync() # Đồng bộ toàn cầu (sẽ mất nhiều thời gian để cập nhật trên Discord)
-    print(f"Đã đồng bộ lệnh slash toàn cầu thành công.")
-except Exception as e:
-    print(f"LỖI KHI ĐỒNG BỘ LỆNH SLASH TOÀN CẦU: {e}")
-    traceback.print_exc()
-
-    random_message_sender.start()
-    activity_heartbeat.start()
-    flask_ping_task.start()
-
 # --- Nhiệm vụ định kỳ để gửi tin nhắn ngẫu nhiên vào một kênh cụ thể ---
 @tasks.loop(minutes=random.randint(2, 5))
 async def random_message_sender():
@@ -925,24 +926,24 @@ async def random_message_sender():
         "Có câu hỏi nào cho bot không? 😉",
         "Hãy cùng xây dựng một cộng đồng tuyệt vời! 💖"
     ]
-    channel_id = 1379789952610467971 # ID kênh bot-mlem
-    channel = bot.get_channel(channel_id)
-    if channel:
+    # Sử dụng biến môi trường cho CHANNEL_ID
+    channel_id_for_messages = int(os.getenv('MESSAGE_CHANNEL_ID', '0')) 
+    channel = bot.get_channel(channel_id_for_messages)
+    if channel and channel_id_for_messages != 0:
         try:
             await channel.send(random.choice(messages))
-            print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{random.choice(messages)}' vào kênh {channel.name} (ID: {channel_id}).")
+            print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{random.choice(messages)}' vào kênh {channel.name} (ID: {channel_id_for_messages}).")
         except discord.errors.Forbidden:
-            print(f"LỖI KÊNH: Bot thiếu quyền gửi tin nhắn vào kênh {channel.name} (ID: {channel_id}).")
+            print(f"LỖI KÊNH: Bot thiếu quyền gửi tin nhắn vào kênh {channel.name} (ID: {channel_id_for_messages}).")
         except Exception as e:
             print(f"LỖI KHI GỬI TIN NHẮN ĐỊNH KỲ: {e}")
             traceback.print_exc()
     else:
-        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {channel_id}. Vui lòng kiểm tra lại ID hoặc bot chưa có quyền truy cập kênh đó.")
-    
+        print(f"CẢNH BÁO KÊNH: Không tìm thấy kênh tin nhắn định kỳ với ID {channel_id_for_messages} hoặc MESSAGE_CHANNEL_ID chưa được đặt.")
+        
     # Lập lịch cho lần gửi tin nhắn tiếp theo
     random_message_sender.change_interval(minutes=random.randint(2, 5))
     print(f"DEBUG: Tác vụ random_message_sender sẽ gửi tin nhắn sau {random_message_sender.interval.seconds // 60} phút.")
-
 
 # --- Nhiệm vụ định kỳ để thay đổi trạng thái hoạt động của bot ---
 @tasks.loop(minutes=random.randint(1, 2))
@@ -963,7 +964,7 @@ async def activity_heartbeat():
     activity_heartbeat.change_interval(minutes=random.randint(1, 2))
     print(f"DEBUG: Tác vụ activity_heartbeat đang ngủ {activity_heartbeat.interval.seconds // 60} phút để chuẩn bị cập nhật trạng thái...")
 
-# --- Nhiệm vụ định kỳ để tự ping Flask server ---
+# --- Nhiệm vụ định kỳ để tự ping Flask server (đã chuyển sang aiohttp) ---
 @tasks.loop(minutes=random.randint(5, 10))
 async def flask_ping_task():
     port = int(os.environ.get("PORT", 10000))
@@ -983,26 +984,20 @@ async def flask_ping_task():
     flask_ping_task.change_interval(minutes=random.randint(5, 10))
     print(f"DEBUG: Lập lịch tự ping tiếp theo sau {flask_ping_task.interval.seconds // 60} phút.")
 
-# --- Khởi chạy Bot Discord và Flask app ---
-async def start_bot_and_flask():
-    """Khởi chạy Flask app và Discord bot."""
-    # Chạy Flask app trong một luồng riêng
+# --- CHẠY BOT VÀ FLASK SERVER ---
+if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True # Đặt luồng là daemon để nó tự kết thúc khi chương trình chính kết thúc
     flask_thread.start()
     print("DEBUG: Đã khởi động luồng Flask.")
 
-    # Chạy Discord bot
-    try:
-        if TOKEN:
-            await bot.start(TOKEN)
-        else:
-            print("LỖI: Biến môi trường DISCORD_BOT_TOKEN không được tìm thấy. Vui lòng thiết lập TOKEN của bot.")
-    except discord.errors.LoginFailure:
-        print("LỖI ĐĂNG NHẬP: TOKEN bot không hợp lệ. Vui lòng kiểm tra lại TOKEN.")
-    except Exception as e:
-        print(f"LỖI KHI KHỞI CHẠY BOT: {e}")
-        traceback.print_exc()
-
-if __name__ == '__main__':
-    asyncio.run(start_bot_and_flask())
+    if BOT_TOKEN:
+        try:
+            bot.run(BOT_TOKEN)
+        except discord.errors.LoginFailure:
+            print("LỖI ĐĂNG NHẬP: BOT_TOKEN không hợp lệ. Vui lòng kiểm tra lại TOKEN.")
+        except Exception as e:
+            print(f"LỖI KHI KHỞI CHẠY BOT: {e}")
+            traceback.print_exc()
+    else:
+        print("LỖI: Không tìm thấy BOT_TOKEN. Vui lòng đặt biến môi trường 'DISCORD_BOT_TOKEN'.")
