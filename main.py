@@ -670,8 +670,13 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
     try:
-        synced = await bot.tree.sync()
-        print(f"Đã đồng bộ {len(synced)} lệnh slash commands toàn cầu.")
+        # Thay thế dòng này:
+        # synced = await bot.tree.sync()
+        # BẰNG dòng này để đồng bộ hóa cho server của bạn (ID: 913046733796311040)
+        guild_id = 913046733796311040 # ID server của bạn
+        guild = discord.Object(id=guild_id)
+        synced = await bot.tree.sync(guild=guild) # <-- ĐÃ SỬA Ở ĐÂY
+        print(f"Đã đồng bộ {len(synced)} lệnh slash commands cho server ID: {guild_id}")
     except Exception as e:
         print(
             f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
@@ -684,7 +689,6 @@ async def on_ready():
     if not random_message_sender.is_running():
         random_message_sender.start()
         print("DEBUG: Đã bắt đầu tác vụ gửi tin nhắn định kỳ.")
-
 
 @bot.event
 async def on_member_join(member):
@@ -724,37 +728,33 @@ async def on_member_join(member):
         await channel.send(
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# --- Slash Command mới: /skibidi ---
-# default_permissions=None cho phép mọi người dùng
+# --- Slash Command: /skibidi (Ai cũng dùng được) ---
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
-@app_commands.default_permissions(None) # Sửa ở đây: Sử dụng decorator app_commands.default_permissions
+@app_commands.default_permissions(None) # Quyền: Mọi người
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
+        "<a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
     )
 
-# --- Slash Command để TEST tạo ảnh welcome ---
-# default_permissions=discord.Permissions(administrator=True) chỉ cho phép quản trị viên
+# --- Slash Command: /testwelcome (Chỉ quản trị viên) ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
-@app_commands.default_permissions(administrator=True) # Sửa ở đây: Sử dụng decorator app_commands.default_permissions
+@app_commands.default_permissions(administrator=True) # Quyền: Chỉ quản trị viên
 @app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True) # Giữ nguyên kiểm tra này để đảm bảo an toàn
+@app_commands.checks.has_permissions(administrator=True) # Kiểm tra bổ sung trong code
 async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
     member_to_test = user if user else interaction.user
     await interaction.response.defer(thinking=True)
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
-        # Đảm bảo create_welcome_image đã được định nghĩa và hoạt động
-        # image_bytes = await create_welcome_image(member_to_test)
-        # await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
-        # print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
-        # Tạm thời thay bằng tin nhắn để test lỗi này
-        await interaction.followup.send(f"Đã nhận lệnh testwelcome cho {member_to_test.display_name}. (Chức năng tạo ảnh đã tạm tắt để test lỗi quyền.)")
-
+        image_bytes = await create_welcome_image(member_to_test) # Gọi hàm tạo ảnh của bạn
+        await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
+        print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
     except Exception as e:
-        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}")
+        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}\nKiểm tra lại hàm `create_welcome_image`.")
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
+        import traceback
+        traceback.print_exc()
 
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
