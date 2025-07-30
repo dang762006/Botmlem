@@ -742,12 +742,11 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
 
 # --- Slash Command mới: /skibidi ---
-@bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
+@bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.", default_permissions=None)
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>" # Đã thêm ✦ vào đây
+        " <a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
     )
-
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
     """Hàm async để khởi động cả Flask và bot Discord."""
