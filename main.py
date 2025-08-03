@@ -519,7 +519,7 @@ async def create_welcome_image(member):
     shadow_color_welcome_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=0.3, # Tăng nhẹ độ sáng của bóng WELCOME
-        saturation_factor=2.5, # Tăng nhẹ độ bão hòa để bóng có màu sắc hơn
+        saturation_factor=3.0, # Tăng nhẹ độ bão hòa để bóng có màu sắc hơn
         clamp_min_l=0.25,      # Đảm bảo độ sáng tối thiểu cho bóng
         clamp_max_l=0.55       # Giới hạn độ sáng tối đa, không cho quá sáng
     )
@@ -552,7 +552,7 @@ async def create_welcome_image(member):
     shadow_color_name_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=0.3, # Tăng nhẹ độ sáng của bóng tên
-        saturation_factor=2.5, # Tăng nhẹ độ bão hòa
+        saturation_factor=3.0, # Tăng nhẹ độ bão hòa
         clamp_min_l=0.25,       # Đảm bảo độ sáng tối thiểu cho bóng tên
         clamp_max_l=0.55        # Giới hạn độ sáng tối đa
     )
