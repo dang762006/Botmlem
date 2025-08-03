@@ -728,12 +728,14 @@ async def on_member_join(member):
         await channel.send(
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 
-# --- Slash Command: /skibidi (Ai cũng dùng được) ---
+# --- Slash Command: /skibidi (Chỉ dành cho những người có vai trò cụ thể) ---
+# Dòng này kiểm tra xem người dùng có vai trò với ID 1322844864760516691 hay không.
+# Nếu không có, lệnh sẽ không hoạt động.
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
-@app_commands.default_permissions(None) # Quyền: Mọi người
+@app_commands.checks.has_role(1322844864760516691)
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
-        "<a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](https://dawnwibu.carrd.co) *** **✦** <a:cat3:1323314218476372122>"
+        "<a:cat2:1323314096040448145>**✦** ***[AN BA TO KOM](https://dawnwibu.carrd.co)*** **✦** <a:cat3:1323314218476372122>"
     )
 
 # --- Slash Command: /testwelcome (Chỉ quản trị viên) ---
