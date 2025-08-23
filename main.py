@@ -732,7 +732,7 @@ async def on_member_join(member):
 # Dòng này kiểm tra xem người dùng có vai trò với ID 1322844864760516691 hay không.
 # Nếu không có, lệnh sẽ không hoạt động.
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
-@app_commands.checks.has_role(1322844864760516691)
+@app_commands.checks.has_role(913046733796311040)
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
         "<a:cat2:1323314096040448145>**✦** ***[AN BA TO KOM](https://dawnwibu.carrd.co)*** **✦** <a:cat3:1323314218476372122>"
