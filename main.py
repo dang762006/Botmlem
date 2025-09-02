@@ -545,25 +545,62 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- Background worker thay cho tasks.loop để tránh overlap ---
+# Worker thay đổi trạng thái hoạt động của bot
 async def activity_heartbeat_worker():
     await bot.wait_until_ready()
     print("DEBUG: activity_heartbeat_worker bắt đầu.")
+
     activities = [
-        discord.Activity(type=discord.ActivityType.watching, name=f"Dawn_wibu phá đảo tựa game mới "),
-        discord.Activity(type=discord.ActivityType.listening, name=f"Bài TRÌNH "),
-        discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft cùng Anh Em "),
+        discord.Activity(type=discord.ActivityType.watching, name="Dawn_wibu phá đảo tựa game mới "),
+        discord.Activity(type=discord.ActivityType.listening, name="Bài TRÌNH "),
+        discord.Activity(type=discord.ActivityType.playing, name="Minecraft cùng Anh Em "),
     ]
+
     while True:
         try:
-            sleep_seconds = random.randint(60, 180)  # 1-3 phút
+            sleep_seconds = random.randint(60, 180)  # 1–3 phút
             await asyncio.sleep(sleep_seconds)
+
             new_activity = random.choice(activities)
             await bot.change_presence(activity=new_activity)
+
             print(f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name}).")
+
         except Exception as e:
             print(f"LỖI ACTIVITY_HEARTBEAT_WORKER: {e}")
             await asyncio.sleep(30)
+
+
+# Worker gửi tin nhắn ngẫu nhiên
+async def random_message_worker():
+    await bot.wait_until_ready()
+    print("DEBUG: random_message_worker bắt đầu.")
+
+    channel_id = 123456789012345678  # 👉 Thay bằng ID kênh của bạn
+    channel = bot.get_channel(channel_id)
+
+    messages = [
+        "Hôm nay trời đẹp ghê 😎",
+        "Anh em nhớ uống nước nha 💧",
+        "Ai đang onl vậy 🙌",
+    ]
+
+    while True:
+        try:
+            sleep_seconds = random.randint(300, 600)  # 5–10 phút
+            await asyncio.sleep(sleep_seconds)
+
+            if channel:
+                msg = random.choice(messages)
+                await channel.send(msg)
+                print(f"DEBUG: Đã gửi tin nhắn: {msg}")
+            else:
+                print("DEBUG: Không tìm thấy channel để gửi tin.")
+
+        except Exception as e:
+            print(f"LỖI RANDOM_MESSAGE_WORKER: {e}")
+            await asyncio.sleep(30)
+
 
 async def random_message_sender_worker():
     await bot.wait_until_ready()
