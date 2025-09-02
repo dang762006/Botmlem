@@ -752,7 +752,7 @@ async def start_bot_and_flask():
         else:
             print(f"Một lỗi HTTP khác đã xảy ra khi đăng nhập: {e}")
             raise
-    except Exception as e:
+        except Exception as e:
         print(f"Một lỗi không xác định đã xảy ra: {e}")
 
 if __name__ == '__main__':
