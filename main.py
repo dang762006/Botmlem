@@ -601,41 +601,6 @@ async def random_message_worker():
             print(f"LỖI RANDOM_MESSAGE_WORKER: {e}")
             await asyncio.sleep(30)
 
-
-async def random_message_sender_worker():
-    await bot.wait_until_ready()
-    print("DEBUG: random_message_sender_worker bắt đầu.")
-    while True:
-        try:
-            # Gửi tin nhắn ngẫu nhiên mỗi 20-40 phút
-            send_interval_minutes = random.randint(20, 40)
-            await asyncio.sleep(send_interval_minutes * 60)
-
-            channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
-            if not channel:
-                print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}.")
-                continue
-
-            if not isinstance(channel, discord.TextChannel):
-                print(f"LỖI KÊNH: ID {CHANNEL_ID_FOR_RANDOM_MESSAGES} không phải TextChannel.")
-                continue
-
-            if not channel.permissions_for(channel.guild.me).send_messages:
-                print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn ở kênh {channel.name}.")
-                continue
-
-            message_to_send = random.choice(RANDOM_MESSAGES)
-            try:
-                await channel.send(message_to_send)
-                print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{message_to_send}' vào kênh {channel.name}.")
-            except discord.errors.Forbidden:
-                print(f"LỖI QUYỀN: Không thể gửi tin nhắn (Forbidden).")
-            except Exception as e:
-                print(f"LỖI GỬI TIN NHẮN: {e}")
-        except Exception as e:
-            print(f"LỖI random_message_sender_worker: {e}")
-            await asyncio.sleep(60)
-
 # --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
@@ -652,6 +617,9 @@ async def on_ready():
         print(
             f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
         )
+    # Khởi động workers
+    bot.loop.create_task(activity_heartbeat_worker())
+    bot.loop.create_task(random_message_worker())
 
     # --- Init semaphore  và khởi background workers 1 lần ---
     global IMAGE_GEN_SEMAPHORE
@@ -783,9 +751,19 @@ async def start_bot_and_flask():
 
 
 if __name__ == '__main__':
+     # chạy Flask trong thread
+    threading.Thread(target=run_flask).start()
+     # chạy vòng lặp restart bot
+    while True:
+        try:
+            asyncio.run(bot.start(TOKEN))
+        except Exception as e:
+            print(f"LỖI: {e}")
+            time.sleep(60)
     if not TOKEN:
         print(
             "Lỗi: TOKEN không được tìm thấy. Vui lòng thiết lập biến môi trường 'DISCORD_BOT_TOKEN' hoặc 'TOKEN'."
         )
     else:
         asyncio.run(start_bot_and_flask())
+        
