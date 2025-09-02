@@ -762,35 +762,26 @@ async def start_bot_and_flask():
 
     # Vòng lặp restart chậm: nếu bot crash, đợi 60s trước khi restart lại
     while True:
-        try:
-            await bot.start(TOKEN)
-            # Nếu bot.start() hoàn tất (rút lui), break
-            break
-        except discord.errors.HTTPException as e:
-            if getattr(e, 'status', None) == 429:
-                print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e}")
-                print("Có vẻ như Discord đã giới hạn tốc độ đăng nhập. Đợi 5-10 phút trước khi thử lại.")
-                await asyncio.sleep(300)  # đợi 5 phút
-            else:
-                print(f"Một lỗi HTTP khác khi đăng nhập: {e}")
-                await asyncio.sleep(60)
-        except Exception as e:
-            print(f"Một lỗi không xác định đã xảy ra: {e}. Restart sau 60s...")
-            await asyncio.sleep(60)
+    try:
+        await bot.start(TOKEN)
+        # Nếu bot.start() hoàn tất (rút lui), break
+        break
 
-        if e.status == 429:
-            print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e.text}")
-            print(
-                "Có vẻ như Discord đã giới hạn tốc độ đăng nhập của bạn. Vui lòng đợi một thời gian (ví dụ: 5-10 phút) rồi thử lại."
-            )
+    except discord.errors.HTTPException as e:
+        if getattr(e, 'status', None) == 429:
+            print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e}")
+            print("Có vẻ như Discord đã giới hạn tốc độ đăng nhập. Dợi 5-10 phút trước khi thử lại.")
+            await asyncio.sleep(300)  # đợi 5 phút
             print(
                 "Đảm bảo bạn không khởi động lại bot quá thường xuyên hoặc có nhiều phiên bản bot đang chạy."
             )
         else:
-            print(f"Một lỗi HTTP khác đã xảy ra khi đăng nhập: {e}")
-            raise
-        except Exception as e:
-        print(f"Một lỗi không xác định đã xảy ra: {e}")
+            print(f"Một lỗi HTTP khác khi đăng nhập: {e}")
+            await asyncio.sleep(60)
+
+    except Exception as e:
+        print(f"Một lỗi không xác định đã xảy ra: {e}. Restart sau 60s...")
+        await asyncio.sleep(60)
 
 if __name__ == '__main__':
     if not TOKEN:
