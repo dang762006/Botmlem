@@ -25,31 +25,15 @@ def health_check():
     """Endpoint Health Check riêng biệt cho Render.com hoặc Replit."""
     return "OK", 200
 
-def send_self_ping():
-    """Gửi yêu cầu HTTP đến chính Flask server để giữ nó hoạt động."""
-    port = int(os.environ.get("PORT", 10000))
-    url = f"http://localhost:{port}/healthz"
-    try:
-        response = requests.get(url, timeout=5)
-        print(
-            f"DEBUG: Tự ping Flask server: {url} - Status: {response.status_code}"
-        )
-    except requests.exceptions.RequestException as e:
-        print(f"LỖI SELF-PING: Không thể tự ping Flask server: {e}")
-
-    next_ping_interval = random.randint(3 * 60, 10 * 60)
-    threading.Timer(next_ping_interval, send_self_ping).start()
-    print(
-        f"DEBUG: Lập lịch tự ping tiếp theo sau {next_ping_interval // 60} phút."
-    )
-
 def run_flask():
     """Chạy Flask app trong một luồng riêng biệt và bắt đầu tự ping."""
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
 
-    threading.Timer(10, send_self_ping).start()
-    print("DEBUG: Đã bắt đầu tác vụ tự ping Flask server.")
+    # NOTE: Không dùng self-ping nội bộ trên Render — Render tính traffic bên ngoài.
+    # Nếu cần giữ alive, sử dụng dịch vụ ngoài như UptimeRobot để ping /healthz mỗi 5 phút.
+    print("DEBUG: Flask server ready. Use an external uptime monitor (UptimeRobot) to ping /healthz every 5 min.")
+
 
     app.run(host='0.0.0.0', port=port,
             debug=False)
@@ -62,7 +46,7 @@ intents.members = True
 intents.message_content = True
 intents.presences = True
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+bot = commands.Bot(command_prefix="!", intents=intents, reconnect=True)
 
 # --- Các hàm xử lý màu sắc ---
 def rgb_to_hsl(r, g, b):
@@ -133,63 +117,46 @@ def adjust_color_brightness_saturation(rgb_color,
 
     return hsl_to_rgb(h, s, l)
 
-async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng màu để có nhiều lựa chọn hơn
+async def get_dominant_color(image_bytes, color_count=20):
+    """
+    Phiên bản tối ưu: phần I/O + CPU-bound (Pillow + ColorThief) chạy trong thread để không block event loop.
+    """
     try:
-        f = io.BytesIO(image_bytes)
-        img_temp = Image.open(f).convert("RGB")
-        f_temp = io.BytesIO()
-        img_temp.save(f_temp, format='PNG')
-        f_temp.seek(0)
+        def blocking_extract_palette(img_bytes, color_count):
+            # chạy trong thread
+            f = io.BytesIO(img_bytes)
+            img_temp = Image.open(f).convert("RGB")
+            f_temp = io.BytesIO()
+            img_temp.save(f_temp, format='PNG')
+            f_temp.seek(0)
+            color_thief = ColorThief(f_temp)
+            palette = color_thief.get_palette(color_count=color_count, quality=1)
+            return palette
 
-        color_thief = ColorThief(f_temp)
-        palette = color_thief.get_palette(color_count=color_count, quality=1)
+        # Lấy palette (blocking) trong thread
+        palette = await asyncio.to_thread(blocking_extract_palette, image_bytes, color_count)
 
-        # Danh sách để lưu các màu đủ tiêu chuẩn, kèm theo điểm số và thứ tự ưu tiên sắc độ
+        # --- Phần chọn màu là nhẹ, chạy trên event loop (async) ---
         qualified_colors = []
-
-        # Định nghĩa ngưỡng và thứ tự ưu tiên sắc độ (Hue)
-        # H (0-1): Đỏ(~0), Cam(~0.08), Vàng(~0.16), Lục(~0.33), Cyan(~0.5), Lam(~0.66), Tím(~0.83), Magenta(~0.9)
-        HUE_PRIORITY_ORDER = [
-            (0.75, 0.95),  # Tím/Magenta
-            (0.40, 0.75),  # Xanh Dương/Xanh Da Trời (Blue/Cyan)
-            (0.18, 0.40),  # Xanh Lá (Green)
-            (0.00, 0.18),  # Đỏ/Cam/Vàng (Warm colors - Red wraps around 0/1)
-            (0.95, 1.00)   # Đỏ (phần còn lại của đỏ)
-        ]
-        
         def get_hue_priority_index(h_value):
-            # Hàm này sẽ trả về index ưu tiên sắc độ
-            # Index càng nhỏ -> ưu tiên càng cao
-            if 0.75 <= h_value < 0.95: return 0  # Tím/Magenta
-            if 0.40 <= h_value < 0.75: return 1  # Xanh Dương/Xanh Da Trời
-            if 0.18 <= h_value < 0.40: return 2  # Xanh Lá
-            
-            # Xử lý màu ấm (đỏ, cam, vàng)
-            if (0.00 <= h_value < 0.18) or (0.95 <= h_value <= 1.00): return 3 # Đỏ/Cam/Vàng
-            
-            return 99 # Giá trị lớn cho các màu không thuộc nhóm ưu tiên
+            if 0.75 <= h_value < 0.95: return 0
+            if 0.40 <= h_value < 0.75: return 1
+            if 0.18 <= h_value < 0.40: return 2
+            if (0.00 <= h_value < 0.18) or (0.95 <= h_value <= 1.00): return 3
+            return 99
 
         for color_rgb in palette:
             r, g, b = color_rgb
             h, s, l = rgb_to_hsl(r, g, b)
-
-            # --- TIÊU CHÍ LỰA CHỌN MÀU SẮC DỰA TRÊN VÙNG KHOANH ĐỎ TRONG PHOTOSHOP ---
-            # Vùng khoanh đỏ: Nửa trên bên phải, tránh trắng tinh và đen/xám tối.
-            # 1. Loại bỏ các màu quá tối hoặc quá xám xịt (ngoài vùng mong muốn)
-            # Dựa trên hình ảnh, L thấp (dưới 0.5) hoặc S quá thấp (dưới 0.25) thì loại bỏ trừ trường hợp xám sáng
-            if l < 0.5 and s < 0.25: # Nếu quá tối và ít bão hòa
+            if l < 0.5 and s < 0.25:
+                continue
+            if l > 0.80:
                 continue
 
-            # 2. Hạn chế màu trắng/rất nhạt (phía trên cùng hình vuông)
-            if l > 0.80: # Nếu quá gần trắng tinh (L > 80%)
-                continue
-            
-            # 3. Phân loại màu: Rực rỡ & Sáng (Ưu tiên 1) vs Xám Sáng (Ưu tiên 2)
-            is_vibrant_and_bright = (l >= 0.5 and s > 0.4) # Màu trong vùng khoanh đỏ chính
-            is_bright_grayish = (l >= 0.6 and s >= 0.25 and s <= 0.4) # Tiêu chí "xám sáng" của bạn
+            is_vibrant_and_bright = (l >= 0.5 and s > 0.4)
+            is_bright_grayish = (l >= 0.6 and s >= 0.25 and s <= 0.4)
 
             if is_vibrant_and_bright:
-                # Tính điểm: Ưu tiên cả bão hòa và sáng cao
                 score = s * l
                 qualified_colors.append({
                     'color': color_rgb,
@@ -198,37 +165,28 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
                     'hue_priority': get_hue_priority_index(h)
                 })
             elif is_bright_grayish:
-                # Điểm thấp hơn cho xám sáng, ưu tiên sáng hơn
-                score = l * 0.5 + s * 0.5 # Điểm cân bằng hơn cho xám sáng
+                score = l * 0.5 + s * 0.5
                 qualified_colors.append({
                     'color': color_rgb,
                     'score': score,
                     'type': 'bright_grayish',
-                    'hue_priority': 98 # Ưu tiên thấp hơn màu rực rỡ
+                    'hue_priority': 98
                 })
-            # Các màu còn lại không được thêm vào qualified_colors và sẽ không được chọn trừ khi không còn lựa chọn nào.
-        
-        # Sắp xếp các màu đủ điều kiện
-        # Ưu tiên 1: loại 'vibrant_bright' trước 'bright_grayish'
-        # Ưu tiên 2: điểm số (score) từ cao đến thấp
-        # Ưu tiên 3: thứ tự sắc độ (hue_priority) từ thấp đến cao (Tím -> Xanh -> Ấm)
+
         qualified_colors.sort(key=lambda x: (
-            0 if x['type'] == 'vibrant_bright' else 1, # Loại màu (0 là rực rỡ, 1 là xám sáng)
-            -x['score'], # Điểm số (giảm dần)
-            x['hue_priority'] # Thứ tự sắc độ (tăng dần)
+            0 if x['type'] == 'vibrant_bright' else 1,
+            -x['score'],
+            x['hue_priority']
         ))
 
         if qualified_colors:
-            return qualified_colors[0]['color'] # Chọn màu ưu tiên nhất
+            return qualified_colors[0]['color']
         else:
-            # Fallback nếu không tìm thấy màu nào thỏa mãn
-            # Trong trường hợp avatar quá tối hoặc quá trắng/xám xịt
-            # Vẫn cố gắng tìm màu sáng nhất trong toàn bộ palette
-            best_fallback_color = (0, 252, 233) # Default Cyan
+            # fallback: chọn màu sáng nhất
+            best_fallback_color = (0, 252, 233)
             max_l_fallback = -1
             for color in palette:
                 _, _, l = rgb_to_hsl(*color)
-                # Chỉ loại bỏ màu cực tối hoàn toàn (đen kịt)
                 if not (color[0] < 30 and color[1] < 30 and color[2] < 30):
                     if l > max_l_fallback:
                         max_l_fallback = l
@@ -237,10 +195,12 @@ async def get_dominant_color(image_bytes, color_count=20): # Tăng số lượng
 
     except Exception as e:
         print(f"LỖI COLORTHIEF: Không thể lấy bảng màu từ avatar: {e}")
-        return (0, 252, 233) # Default Cyan (màu mặc định an toàn, sáng)
+        return (0, 252, 233)
 
 avatar_cache = {}
-CACHE_TTL = 300
+CACHE_TTL = 900  # 15 phút (tăng để giảm số request đến Discord/HTTP)
+# Giới hạn số task tạo ảnh cùng lúc (tránh spike CPU / OOM)
+IMAGE_GEN_SEMAPHORE = None  # sẽ init trong on_ready
 
 # --- CÁC HẰNG SỐ DÙNG TRONG TẠO ẢNH ---
 FONT_MAIN_PATH = "1FTV-Designer.otf" # Font chính cho chữ
@@ -585,83 +545,59 @@ async def create_welcome_image(member):
     img_byte_arr.seek(0)
     return img_byte_arr
 
-# --- Các tác vụ của bot (đã chỉnh sửa để không sleep ở before_loop) ---
-@tasks.loop(minutes=1)
-async def activity_heartbeat():
-    sleep_duration = random.randint(1 * 60, 3 * 60)
-    print(
-        f"DEBUG: Tác vụ activity_heartbeat đang ngủ {sleep_duration // 60} phút để chuẩn bị cập nhật trạng thái..."
-    )
-    await asyncio.sleep(sleep_duration)
-
+# --- Background worker thay cho tasks.loop để tránh overlap ---
+async def activity_heartbeat_worker():
+    await bot.wait_until_ready()
+    print("DEBUG: activity_heartbeat_worker bắt đầu.")
     activities = [
-        discord.Activity(type=discord.ActivityType.watching,
-                         name=f"Dawn_wibu phá đảo tựa game mới "),
-        discord.Activity(type=discord.ActivityType.listening,
-                         name=f"Bài TRÌNH "),
-        discord.Activity(type=discord.ActivityType.playing,
-                         name=f"Minecraft cùng Anh Em "),
+        discord.Activity(type=discord.ActivityType.watching, name=f"Dawn_wibu phá đảo tựa game mới "),
+        discord.Activity(type=discord.ActivityType.listening, name=f"Bài TRÌNH "),
+        discord.Activity(type=discord.ActivityType.playing, name=f"Minecraft cùng Anh Em "),
     ]
+    while True:
+        try:
+            sleep_seconds = random.randint(60, 180)  # 1-3 phút
+            await asyncio.sleep(sleep_seconds)
+            new_activity = random.choice(activities)
+            await bot.change_presence(activity=new_activity)
+            print(f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name}).")
+        except Exception as e:
+            print(f"LỖI ACTIVITY_HEARTBEAT_WORKER: {e}")
+            await asyncio.sleep(30)
 
-    try:
-        new_activity = random.choice(activities)
-        await bot.change_presence(activity=new_activity)
-        print(
-            f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name})."
-        )
+async def random_message_sender_worker():
+    await bot.wait_until_ready()
+    print("DEBUG: random_message_sender_worker bắt đầu.")
+    while True:
+        try:
+            # Gửi tin nhắn ngẫu nhiên mỗi 20-40 phút
+            send_interval_minutes = random.randint(20, 40)
+            await asyncio.sleep(send_interval_minutes * 60)
 
-    except Exception as e:
-        print(
-            f"LỖI ACTIVITY_HEARTBEAT: Không thể cập nhật trạng thái bot: {e}")
+            channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
+            if not channel:
+                print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}.")
+                continue
 
-@activity_heartbeat.before_loop
-async def before_activity_heartbeat():
-    await bot.wait_until_ready() # Đảm bảo bot đã sẵn sàng trước khi chạy loop
-    print("DEBUG: activity_heartbeat task chờ bot sẵn sàng.")
+            if not isinstance(channel, discord.TextChannel):
+                print(f"LỖI KÊNH: ID {CHANNEL_ID_FOR_RANDOM_MESSAGES} không phải TextChannel.")
+                continue
 
-# --- Tác vụ gửi tin nhắn định kỳ ---
-CHANNEL_ID_FOR_RANDOM_MESSAGES = 1379789952610467971
+            if not channel.permissions_for(channel.guild.me).send_messages:
+                print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn ở kênh {channel.name}.")
+                continue
 
-RANDOM_MESSAGES = [
-    "Chào mọi người! ✨ Chúc một ngày tốt lành!",
-    "Đang online đây! Có ai cần gì không? 🤖",
-    "Thế giới thật tươi đẹp phải không? 💖",
-    "Gửi chút năng lượng tích cực đến tất cả! 💪",
-    "Đừng quên thư giãn nhé! 😌",
-    "Tôi là bot thông minh nhất quả đất! 💡",
-    "Ngày mới năng động nha mọi người! 🚀",
-    "Có câu hỏi khó nào cần tôi giải đáp không? 🧠"
-]
-
-@tasks.loop(minutes=1)
-async def random_message_sender():
-    send_interval = random.randint(2 * 60, 5 * 60)
-    print(f"DEBUG: Tác vụ random_message_sender sẽ gửi tin nhắn sau {send_interval // 60} phút.")
-    await asyncio.sleep(send_interval)
-
-    channel = bot.get_channel(CHANNEL_ID_FOR_RANDOM_MESSAGES)
-    if channel:
-        if isinstance(channel, discord.TextChannel):
-            if channel.permissions_for(channel.guild.me).send_messages:
-                message_to_send = random.choice(RANDOM_MESSAGES)
-                try:
-                    await channel.send(message_to_send)
-                    print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{message_to_send}' vào kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
-                except discord.errors.Forbidden:
-                    print(f"LỖI QUYỀN: Bot không có quyền gửi tin nhắn trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
-                except Exception as e:
-                    print(f"LỖI GỬI TIN NHẮN: Không thể gửi tin nhắn định kỳ vào kênh {CHANNEL_ID_FOR_RANDOM_MESSAGES}: {e}")
-            else:
-                print(f"LỖI QUYỀN: Bot không có quyền 'gửi tin nhắn' trong kênh {channel.name} (ID: {CHANNEL_ID_FOR_RANDOM_MESSAGES}).")
-        else:
-            print(f"LỖI KÊNH: Kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES} không phải là kênh văn bản.")
-    else:
-        print(f"LỖI KÊNH: Không tìm thấy kênh với ID {CHANNEL_ID_FOR_RANDOM_MESSAGES}. Vui lòng kiểm tra lại ID hoặc bot chưa có quyền truy cập kênh đó.")
-
-@random_message_sender.before_loop
-async def before_random_message_sender():
-    await bot.wait_until_ready() # Đảm bảo bot đã sẵn sàng trước khi chạy loop
-    print("DEBUG: random_message_sender task chờ bot sẵn sàng.")
+            message_to_send = random.choice(RANDOM_MESSAGES)
+            try:
+                await channel.send(message_to_send)
+                print(f"DEBUG: Đã gửi tin nhắn định kỳ: '{message_to_send}' vào kênh {channel.name}.")
+            except discord.errors.Forbidden:
+                print(f"LỖI QUYỀN: Không thể gửi tin nhắn (Forbidden).")
+            except Exception as e:
+                print(f"LỖI GỬI TIN NHẮN: {e}")
+        except Exception as e:
+            print(f"LỖI random_message_sender_worker: {e}")
+            await asyncio.sleep(60)
 
 # --- Các sự kiện của bot ---
 @bot.event
@@ -670,9 +606,7 @@ async def on_ready():
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
     try:
-        # Thay thế dòng này:
-        # synced = await bot.tree.sync()
-        # BẰNG dòng này để đồng bộ hóa cho server của bạn (ID: 913046733796311040)
+        # đồng bộ hóa cho server của bạn (ID: 913046733796311040)
         guild_id = 913046733796311040 # ID server của bạn
         guild = discord.Object(id=guild_id)
         synced = await bot.tree.sync(guild=guild) # <-- ĐÃ SỬA Ở ĐÂY
@@ -682,13 +616,18 @@ async def on_ready():
             f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
         )
 
-    if not activity_heartbeat.is_running():
-        activity_heartbeat.start()
-        print("DEBUG: Đã bắt đầu tác vụ thay đổi trạng thái để giữ hoạt động.")
+    # --- Init semaphore  và khởi background workers 1 lần ---
+    global IMAGE_GEN_SEMAPHORE
+    if IMAGE_GEN_SEMAPHORE is None:
+        IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)  # giữ tối đa 2 tác vụ tạo ảnh chạy đồng thời
 
-    if not random_message_sender.is_running():
-        random_message_sender.start()
-        print("DEBUG: Đã bắt đầu tác vụ gửi tin nhắn định kỳ.")
+    # Start background worker tasks only once
+    if not hasattr(bot, 'bg_tasks_started') or not bot.bg_tasks_started:
+        bot.bg_tasks_started = True
+        asyncio.create_task(activity_heartbeat_worker())
+        asyncio.create_task(random_message_sender_worker())
+        print("DEBUG: Đã bắt đầu background workers (activity + random messages).")
+
 
 @bot.event
 async def on_member_join(member):
@@ -711,10 +650,17 @@ async def on_member_join(member):
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member.display_name}...")
-        image_bytes = await create_welcome_image(member)
+        # Giới hạn số tác vụ tạo ảnh cùng lúc
+        if IMAGE_GEN_SEMAPHORE:
+            async with IMAGE_GEN_SEMAPHORE:
+                image_bytes = await create_welcome_image(member)
+        else:
+            image_bytes = await create_welcome_image(member)
+
         await channel.send(
             f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
             file=discord.File(fp=image_bytes, filename='welcome.png'))
+
         print(f"Đã gửi ảnh chào mừng thành công cho {member.display_name}!")
     except discord.errors.HTTPException as e:
         print(
@@ -749,7 +695,12 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 
     try:
         print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
-        image_bytes = await create_welcome_image(member_to_test) # Gọi hàm tạo ảnh của bạn
+        if IMAGE_GEN_SEMAPHORE:
+            async with IMAGE_GEN_SEMAPHORE:
+                image_bytes = await create_welcome_image(member_to_test)
+        else:
+            image_bytes = await create_welcome_image(member_to_test)
+
         await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
         print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
     except Exception as e:
@@ -760,20 +711,36 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
-    """Hàm async để khởi động cả Flask và bot Discord."""
+    """Hàm async để khởi động Flask + bot Discord với delay và restart chậm (avoid rate limit)."""
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
 
-    print(
-        "Đang đợi 5 giây trước khi khởi động bot Discord để tránh rate limit..."
-    )
-    await asyncio.sleep(5)
-    print("Bắt đầu khởi động bot Discord...")
+    # Đợi lâu hơn khi process khởi động để tránh login spam nếu Render restart
+    delay_before_login = 30  # seconds
+    print(f"DEBUG: Đang đợi {delay_before_login}s trước khi khởi động bot Discord để tránh rate limit...")
+    await asyncio.sleep(delay_before_login)
 
-    try:
-        await bot.start(TOKEN)
-    except discord.errors.HTTPException as e:
+    print("DEBUG: Bắt đầu khởi động bot Discord...")
+
+    # Vòng lặp restart chậm: nếu bot crash, đợi 60s trước khi restart lại
+    while True:
+        try:
+            await bot.start(TOKEN)
+            # Nếu bot.start() hoàn tất (rút lui), break
+            break
+        except discord.errors.HTTPException as e:
+            if getattr(e, 'status', None) == 429:
+                print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e}")
+                print("Có vẻ như Discord đã giới hạn tốc độ đăng nhập. Đợi 5-10 phút trước khi thử lại.")
+                await asyncio.sleep(300)  # đợi 5 phút
+            else:
+                print(f"Một lỗi HTTP khác khi đăng nhập: {e}")
+                await asyncio.sleep(60)
+        except Exception as e:
+            print(f"Một lỗi không xác định đã xảy ra: {e}. Restart sau 60s...")
+            await asyncio.sleep(60)
+
         if e.status == 429:
             print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e.text}")
             print(
