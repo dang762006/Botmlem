@@ -761,11 +761,12 @@ async def setupverify(interaction: discord.Interaction):
     view = View()
     view.add_item(button)
 
+    await interaction.response.send_message("✅ Đã tạo nút xác minh trong kênh này.", ephemeral=True)
+
     await interaction.channel.send(
         "**Nhấn nút dưới đây để xác minh và mở toàn bộ server!**",
         view=view
     )
-    await interaction.response.send_message("✅ Đã tạo nút xác minh trong kênh này.", ephemeral=True)
 
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
