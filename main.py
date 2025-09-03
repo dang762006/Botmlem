@@ -655,8 +655,17 @@ async def on_member_join(member):
         else:
             image_bytes = await create_welcome_image(member)
 
+            welcome_messages = [
+            f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến với {member.guild.name}!** ✨",
+            f"🔥 {member.mention} vừa xuất hiện! Mọi người vỗ tay nào 👏",
+            f"👋 Xin chào {member.mention}, chúc bạn vui vẻ tại {member.guild.name}!",
+            f"{member.mention} đã gia nhập sever {member.guild.name}! 🥳",
+        ]
+        import random
+        welcome_text = random.choice(welcome_messages)
+
         await channel.send(
-            f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến {member.guild.name}**",
+            welcome_text,
             file=discord.File(fp=image_bytes, filename='welcome.png'))
 
         print(f"Đã gửi ảnh chào mừng thành công cho {member.display_name}!")
@@ -671,6 +680,22 @@ async def on_member_join(member):
         print(f"LỖỖI CHÀO MỪNG KHÁC: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
         await channel.send(
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
+    # --- Auto Reply theo keyword ---
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return  # bỏ qua tin nhắn bot khác
+
+    content = message.content.lower()
+
+    if "hello" in content or "hi" in content:
+        await message.channel.send(f"Chào {message.author.mention} 😎")
+
+    if "ping" in content:
+        await message.channel.send("Pong 🏓")
+
+    # Đừng quên thêm dòng này để slash command vẫn hoạt động
+    await bot.process_commands(message)
 
 # --- Slash Command: /skibidi (Chỉ dành cho những người có vai trò cụ thể) ---
 # Dòng này kiểm tra xem người dùng có vai trò với ID 1322844864760516691 hay không.
