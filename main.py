@@ -576,7 +576,7 @@ async def random_message_worker():
     await bot.wait_until_ready()
     print("DEBUG: random_message_worker bắt đầu.")
 
-    channel_id = 123456789012345678  # 👉 Thay bằng ID kênh của bạn
+    channel_id = 1379789952610467971  # 👉 Thay bằng ID kênh của bạn
     channel = bot.get_channel(channel_id)
 
     messages = [
@@ -604,35 +604,28 @@ async def random_message_worker():
 # --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
-    """Xử lý sự kiện khi bot sẵn sàng."""
     print(f'{bot.user} đã sẵn sàng! 🎉')
     print('Bot đã online và có thể hoạt động.')
+
     try:
-        # đồng bộ hóa cho server của bạn (ID: 913046733796311040)
-        guild_id = 913046733796311040 # ID server của bạn
+        guild_id = 913046733796311040  # ID server của bạn
         guild = discord.Object(id=guild_id)
-        synced = await bot.tree.sync(guild=guild) # <-- ĐÃ SỬA Ở ĐÂY
+        synced = await bot.tree.sync(guild=guild)
         print(f"Đã đồng bộ {len(synced)} lệnh slash commands cho server ID: {guild_id}")
     except Exception as e:
-        print(
-            f"LỖI ĐỒNG BỘ: Lỗi khi đồng bộ slash commands: {e}. Vui lòng kiểm tra quyền 'applications.commands' cho bot trên Discord Developer Portal."
-        )
-    # Khởi động workers
-    bot.loop.create_task(activity_heartbeat_worker())
-    bot.loop.create_task(random_message_worker())
+        print(f"LỖI ĐỒNG BỘ: {e}")
 
-    # --- Init semaphore  và khởi background workers 1 lần ---
+    # --- Init semaphore ---
     global IMAGE_GEN_SEMAPHORE
     if IMAGE_GEN_SEMAPHORE is None:
-        IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)  # giữ tối đa 2 tác vụ tạo ảnh chạy đồng thời
+        IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)
 
-    # Start background worker tasks only once
+    # --- Start background workers (chỉ 1 lần) ---
     if not hasattr(bot, 'bg_tasks_started') or not bot.bg_tasks_started:
         bot.bg_tasks_started = True
-        asyncio.create_task(activity_heartbeat_worker())
-        asyncio.create_task(random_message_sender_worker())
+        bot.loop.create_task(activity_heartbeat_worker())
+        bot.loop.create_task(random_message_worker())
         print("DEBUG: Đã bắt đầu background workers (activity + random messages).")
-
 
 @bot.event
 async def on_member_join(member):
@@ -683,7 +676,7 @@ async def on_member_join(member):
 # Dòng này kiểm tra xem người dùng có vai trò với ID 1322844864760516691 hay không.
 # Nếu không có, lệnh sẽ không hoạt động.
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
-@app_commands.checks.has_role(913046733796311040)
+@app_commands.checks.has_role(1322878740707151882)
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message(
         "<a:cat2:1323314096040448145>**✦** ***[AN BA TO KOM](https://dawnwibu.carrd.co)*** **✦** <a:cat3:1323314218476372122>"
@@ -732,15 +725,13 @@ async def start_bot_and_flask():
     while True:
         try:
             await bot.start(TOKEN)
-            # Nếu bot.start() hoàn tất (rút lui), break
-            break
+            break  # Nếu bot.stop() được gọi → thoát vòng lặp
     
         except discord.errors.HTTPException as e:
             if getattr(e, 'status', None) == 429:
                 print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e}")
-                print("Có vẻ như Discord đã giới hạn tốc độ đăng nhập. Dợi 5-10 phút trước khi thử lại.")
+                print("Có vẻ như Discord đã giới hạn tốc độ đăng nhập. Đợi 5-10 phút trước khi thử lại.")
                 await asyncio.sleep(300)  # đợi 5 phút
-                print("Đảm bảo bạn không khởi động lại bot quá thường xuyên hoặc có nhiều phiên bản bot đang chạy.")
             else:
                 print(f"Một lỗi HTTP khác khi đăng nhập: {e}")
                 await asyncio.sleep(60)
@@ -750,20 +741,10 @@ async def start_bot_and_flask():
             await asyncio.sleep(60)
 
 
-if __name__ == '__main__':
-     # chạy Flask trong thread
-    threading.Thread(target=run_flask).start()
-     # chạy vòng lặp restart bot
-    while True:
-        try:
-            asyncio.run(bot.start(TOKEN))
-        except Exception as e:
-            print(f"LỖI: {e}")
-            time.sleep(60)
-    if not TOKEN:
-        print(
-            "Lỗi: TOKEN không được tìm thấy. Vui lòng thiết lập biến môi trường 'DISCORD_BOT_TOKEN' hoặc 'TOKEN'."
-        )
-    else:
+if __name__ == "__main__":
+    try:
         asyncio.run(start_bot_and_flask())
+    except KeyboardInterrupt:
+        print("Bot đã bị dừng bằng tay.")
+
         
