@@ -740,7 +740,7 @@ from discord.ui import Button, View
 @app_commands.default_permissions(administrator=True)
 async def setupverify(interaction: discord.Interaction):
     # ID của role Thành viên (bạn thay vào)
-    role_id = 123456789012345678  
+    role_id = 1412820448499990629  
     role = interaction.guild.get_role(role_id)
     if role is None:
         await interaction.response.send_message("❌ Không tìm thấy role. Vui lòng kiểm tra lại ID role.", ephemeral=True)
