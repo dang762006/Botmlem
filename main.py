@@ -604,28 +604,35 @@ async def random_message_worker():
 # --- Các sự kiện của bot ---
 @bot.event
 async def on_ready():
-    print(f'{bot.user} đã sẵn sàng! 🎉')
-    print('Bot đã online và có thể hoạt động.')
+    global IMAGE_GEN_SEMAPHORE
 
+    # Tạo Semaphore để limit số ảnh welcome sinh song song
+    if IMAGE_GEN_SEMAPHORE is None:
+        IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)
+
+    print("===================================")
+    print(f"🤖 Bot đã đăng nhập thành công!")
+    print(f"👤 Tên bot   : {bot.user} (ID: {bot.user.id})")
+    print(f"🌐 Server(s) : {len(bot.guilds)}")
+    print("===================================")
+
+    # --- Sync slash command chỉ cho 1 server ---
     try:
         guild_id = 913046733796311040  # ID server của bạn
         guild = discord.Object(id=guild_id)
         synced = await bot.tree.sync(guild=guild)
-        print(f"Đã đồng bộ {len(synced)} lệnh slash commands cho server ID: {guild_id}")
+        print(f"✅ Đã sync {len(synced)} lệnh slash trong server {guild_id}")
+        for cmd in synced:
+            print(f"   └─ /{cmd.name} : {cmd.description}")
     except Exception as e:
-        print(f"LỖI ĐỒNG BỘ: {e}")
+        print(f"❌ Lỗi khi sync slash command: {e}")
 
-    # --- Init semaphore ---
-    global IMAGE_GEN_SEMAPHORE
-    if IMAGE_GEN_SEMAPHORE is None:
-        IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)
-
-    # --- Start background workers (chỉ 1 lần) ---
-    if not hasattr(bot, 'bg_tasks_started') or not bot.bg_tasks_started:
+    # --- Chạy background workers ---
+    if not getattr(bot, "bg_tasks_started", False):
         bot.bg_tasks_started = True
         bot.loop.create_task(activity_heartbeat_worker())
         bot.loop.create_task(random_message_worker())
-        print("DEBUG: Đã bắt đầu background workers (activity + random messages).")
+        print("⚙️ Background workers đã được khởi động.")
 
 @bot.event
 async def on_member_join(member):
