@@ -735,7 +735,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                     title="⬆ LEVEL UP ⬆",
                     description=(
                         f"<a:cat3:1323314218476372122> Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!\n"
-                        f"✦----------------------------------------------------✦"
+                        f"✦-------------------------------------------------------------✦"
                     ),
                     color=role.color if role.color.value else discord.Color.gold()
                 )
