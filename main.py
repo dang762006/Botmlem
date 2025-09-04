@@ -742,45 +742,6 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         traceback.print_exc()
 from discord.ui import Button, View
 
-# --- Slash Command: /setupverify (Chỉ quản trị viên) ---
-@bot.tree.command(name="setupverify", description="Gửi nút xác minh để nhận role.")
-@app_commands.checks.has_permissions(administrator=True)
-async def setupverify(interaction: discord.Interaction):
-    role_id = 1412820448499990629  # ID role Thành viên
-    role = interaction.guild.get_role(role_id)
-    if role is None:
-        await interaction.response.send_message(
-            "❌ Không tìm thấy role. Vui lòng kiểm tra lại ID role.",
-            ephemeral=True
-        )
-        return
-
-    button = Button(label="Xác minh ✅", style=discord.ButtonStyle.success)
-
-    async def button_callback(interaction_button: discord.Interaction):
-        if role in interaction_button.user.roles:
-            await interaction_button.response.send_message(
-                "✅ Bạn đã có role Thành viên rồi!", ephemeral=True
-            )
-        else:
-            await interaction_button.user.add_roles(role)
-            await interaction_button.response.send_message(
-                "🎉 Bạn đã được xác minh và có role Thành viên!",
-                ephemeral=True
-            )
-
-    button.callback = button_callback
-    view = View()
-    view.add_item(button)
-
-    await interaction.response.send_message(
-        "✅ Đã tạo nút xác minh trong kênh này.",
-        ephemeral=True
-    )
-    await interaction.channel.send(
-        "**Nhấn nút dưới đây để xác minh và mở toàn bộ server!**",
-        view=view
-    )
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
     """Hàm async để khởi động Flask + bot Discord với delay và restart chậm (avoid rate limit)."""
