@@ -722,24 +722,26 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     if not new_roles:
         return
 
-    # Check xem role mới có phải role trong hệ thống rank không
+   # Check xem role mới có phải role trong hệ thống rank không
     for role_id in RANK_ROLES:
         role = after.guild.get_role(role_id)
         if role in new_roles:
             # Lấy kênh thông báo
             channel = after.guild.get_channel(NOTIFY_CHANNEL_ID)
             if channel:
-                # Tên hiển thị đẹp + màu embed
+                # Lấy tên hiển thị đẹp + màu embed
                 role_display = ROLE_DISPLAY.get(role.id, role.name)
                 embed = discord.Embed(
                     title="⬆ LEVEL UP ⬆",
-                    description=f"<a:cat3:1323314218476372122> Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!\n",
-                                f"✦----------------------------------------------------✦",
+                    description=(
+                        f"<a:cat3:1323314218476372122> Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!\n"
+                        f"✦----------------------------------------------------✦"
+                    ),
                     color=role.color if role.color.value else discord.Color.gold()
                 )
                 embed.set_thumbnail(url=after.display_avatar.url)
                 await channel.send(embed=embed)
-
+    
             # Xóa các role rank thấp hơn
             role_index = RANK_ROLES.index(role_id)
             lower_roles = RANK_ROLES[role_index + 1:]
@@ -748,7 +750,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 if low_role in after.roles:
                     await after.remove_roles(low_role)
                     print(f"Đã xóa role {low_role.name} khỏi {after.display_name}")
-
+    
             break
 
     # --- Auto Reply theo keyword ---
