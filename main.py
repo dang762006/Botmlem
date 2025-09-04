@@ -721,8 +721,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             channel = after.guild.get_channel(NOTIFY_CHANNEL_ID)
             if channel:
                 await channel.send(
-                    f"🎉 **⬆LEVEL UP⬆** <a:cat3:1323314218476372122>
-                    Xin chúc mừng【{after.mention}】đã thăng cấp lên **{role.name}**!"
+                    f"<a:cat3:1323314218476372122> **⬆LEVEL UP⬆**  Xin chúc mừng【{after.mention}】đã thăng cấp lên **{role.name}**!"
                 )
 
             # Xóa các role rank thấp hơn
