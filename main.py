@@ -691,15 +691,24 @@ async def on_member_join(member):
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 # Danh sách role xếp hạng (cao -> thấp)
 RANK_ROLES = [
-    1368614250603614348,  # cấp cao nhất
-    1368614259595935916,  # cao nhì
-    1368614263324934316,  # trung bình
-    1368629255654871251,  # thấp nhì
-    1322844864760516691,  # thấp nhất
+    1368614250603614348,  # 🎇 Thượng Cổ Nhân
+    1368614259595935916,  # 🎆 Cổ Linh
+    1368614263324934316,  # 🔥 Tân Hồn
+    1368629255654871251,  # ⚔️ Lữ Hành Giả
+    1322844864760516691,  # 🐣 Tân Giả
 ]
 
 # Kênh thông báo
 NOTIFY_CHANNEL_ID = 1368613831529726137
+
+# Map role -> hiển thị đẹp
+ROLE_DISPLAY = {
+    1368614250603614348: "🎇 **Thượng Cổ Nhân**",
+    1368614259595935916: "🎆 **Cổ Linh**",
+    1368614263324934316: "🔥 **Tân Hồn**",
+    1368629255654871251: "⚔️ **Lữ Hành Giả**",
+    1322844864760516691: "🐣 **Tân Giả**",
+}
 
 
 @bot.event
@@ -717,16 +726,22 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     for role_id in RANK_ROLES:
         role = after.guild.get_role(role_id)
         if role in new_roles:
-            # Gửi thông báo
+            # Lấy kênh thông báo
             channel = after.guild.get_channel(NOTIFY_CHANNEL_ID)
             if channel:
-                await channel.send(
-                    f"<a:cat3:1323314218476372122> **⬆LEVEL UP⬆**  Xin chúc mừng【{after.mention}】đã thăng cấp lên **{role.name}**!"
+                # Tên hiển thị đẹp + màu embed
+                role_display = ROLE_DISPLAY.get(role.id, role.name)
+                embed = discord.Embed(
+                    title="⬆ LEVEL UP ⬆",
+                    description=f"🎉 Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!",
+                    color=role.color if role.color.value else discord.Color.gold()
                 )
+                embed.set_thumbnail(url=after.display_avatar.url)
+                await channel.send(embed=embed)
 
             # Xóa các role rank thấp hơn
             role_index = RANK_ROLES.index(role_id)
-            lower_roles = RANK_ROLES[role_index + 1 :]
+            lower_roles = RANK_ROLES[role_index + 1:]
             for low_role_id in lower_roles:
                 low_role = after.guild.get_role(low_role_id)
                 if low_role in after.roles:
@@ -734,6 +749,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                     print(f"Đã xóa role {low_role.name} khỏi {after.display_name}")
 
             break
+
     # --- Auto Reply theo keyword ---
 @bot.event
 async def on_message(message):
