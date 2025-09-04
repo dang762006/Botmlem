@@ -733,7 +733,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 role_display = ROLE_DISPLAY.get(role.id, role.name)
                 embed = discord.Embed(
                     title="⬆ LEVEL UP ⬆",
-                    description=f"🎉 Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!",
+                    description=f"<a:cat3:1323314218476372122> Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!",
                     color=role.color if role.color.value else discord.Color.gold()
                 )
                 embed.set_thumbnail(url=after.display_avatar.url)
