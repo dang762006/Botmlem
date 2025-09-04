@@ -691,8 +691,8 @@ async def on_member_join(member):
             f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
 # Danh sách role xếp hạng (cao -> thấp)
 RANK_ROLES = [
-    1368614250603614348,  # 🎇 Thượng Cổ Nhân
-    1368614259595935916,  # 🎆 Cổ Linh
+    1368614250603614348,  # 🔆 Thượng Cổ Nhân
+    1368614259595935916,  # 💥 Cổ Linh
     1368614263324934316,  # 🔥 Tân Hồn
     1368629255654871251,  # ⚔️ Lữ Hành Giả
     1322844864760516691,  # 🐣 Tân Giả
@@ -703,8 +703,8 @@ NOTIFY_CHANNEL_ID = 1368613831529726137
 
 # Map role -> hiển thị đẹp
 ROLE_DISPLAY = {
-    1368614250603614348: "🎇 **Thượng Cổ Nhân**",
-    1368614259595935916: "🎆 **Cổ Linh**",
+    1368614250603614348: "🔆 **Thượng Cổ Nhân**",
+    1368614259595935916: "💥 **Cổ Linh**",
     1368614263324934316: "🔥 **Tân Hồn**",
     1368629255654871251: "⚔️ **Lữ Hành Giả**",
     1322844864760516691: "🐣 **Tân Giả**",
@@ -733,7 +733,8 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 role_display = ROLE_DISPLAY.get(role.id, role.name)
                 embed = discord.Embed(
                     title="⬆ LEVEL UP ⬆",
-                    description=f"<a:cat3:1323314218476372122> Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!",
+                    description=f"<a:cat3:1323314218476372122> Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!\n",
+                                f"✦----------------------------------------------------✦",
                     color=role.color if role.color.value else discord.Color.gold()
                 )
                 embed.set_thumbnail(url=after.display_avatar.url)
