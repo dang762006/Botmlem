@@ -674,10 +674,10 @@ async def on_member_join(member):
 
         welcome_messages = [
             f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến với {member.guild.name}!** ✨",
-            f"👋 **Xin chào {member.mention}, chúc bạn vui vẻ tại {member.guild.name}**! **<a:cat2:1323314096040448145>**",
-            f"**<a:cat2:1323314096040448145>** **{member.mention} đã gia nhập sever {member.guild.name}**! 🥳",
+            f"👋 **Xin chào {member.mention}, chúc bạn chơi vui tại {member.guild.name}**! **<a:cat2:1323314096040448145>**",
+            f"**<a:cat2:1323314096040448145>** **{member.mention} đã gia nhập băng đẳng {member.guild.name}**! 🥳",
             f"**<a:cat2:1323314096040448145>** **{member.mention} đã join party! Cả team {member.guild.name} ready chưa?**! 🎮",
-            f"🌟 **{member.mention}, bạn đã mở khóa map {member.guild.name}! Chúc chơi game vui vẻ** **<a:cat2:1323314096040448145>**",
+            f"🌟 **{member.mention} đã mở khóa map {member.guild.name}! Chúc mừng thí chủ ** **<a:cat2:1323314096040448145>**",
         ]
         import random
         welcome_text = random.choice(welcome_messages)
