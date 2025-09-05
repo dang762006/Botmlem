@@ -455,7 +455,7 @@ async def create_welcome_image(member):
     stroke_color_rgb = adjust_color_brightness_saturation(
         dominant_color_from_avatar,
         brightness_factor=1.1,  # Tăng độ sáng
-        saturation_factor=4.6,  # Tăng độ bão hòa
+        saturation_factor=4.9,  # Tăng độ bão hòa
         clamp_min_l=0.6,        # Đảm bảo độ sáng tối thiểu 60%
         clamp_max_l=0.90        # Giới hạn độ sáng tối đa để không bị quá trắng
     )
@@ -576,13 +576,23 @@ async def random_message_worker():
     await bot.wait_until_ready()
     print("DEBUG: random_message_worker bắt đầu.")
 
-    channel_id = 1379789952610467971  # 👉 Thay bằng ID kênh của bạn
+    channel_id = 1379789952610467971  # 👉
     channel = bot.get_channel(channel_id)
 
     messages = [
         "Hôm nay trời đẹp ghê 😎",
         "Anh em nhớ uống nước nha 💧",
         "Ai đang onl vậy 🙌",
+        "👺",
+        "👾",
+        "🤖",
+        "💖",
+        "💋",
+        "👀",
+        "😎",
+        "🤞",
+        "✨",
+        "🤤",
     ]
 
     while True:
@@ -664,11 +674,10 @@ async def on_member_join(member):
 
         welcome_messages = [
             f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến với {member.guild.name}!** ✨",
-            f"**<a:cat2:1323314096040448145>** {member.mention} vừa xuất hiện! Mọi người vỗ tay nào 👏",
-            f"👋 Xin chào {member.mention}, chúc bạn vui vẻ tại {member.guild.name}! **<a:cat2:1323314096040448145>**",
-            f"**<a:cat2:1323314096040448145>** {member.mention} đã gia nhập sever {member.guild.name}! 🥳",
-            f"**<a:cat2:1323314096040448145>** {member.mention} đã join party! Cả team {member.guild.name} ready chưa?! 🎮",
-            f"🌟 {member.mention}, bạn đã mở khóa map {member.guild.name}! Chúc chơi game vui vẻ **<a:cat2:1323314096040448145>**",
+            f"👋 **Xin chào {member.mention}, chúc bạn vui vẻ tại {member.guild.name}**! **<a:cat2:1323314096040448145>**",
+            f"**<a:cat2:1323314096040448145>** **{member.mention} đã gia nhập sever {member.guild.name}**! 🥳",
+            f"**<a:cat2:1323314096040448145>** **{member.mention} đã join party! Cả team {member.guild.name} ready chưa?**! 🎮",
+            f"🌟 **{member.mention}, bạn đã mở khóa map {member.guild.name}! Chúc chơi game vui vẻ** **<a:cat2:1323314096040448145>**",
         ]
         import random
         welcome_text = random.choice(welcome_messages)
