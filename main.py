@@ -506,7 +506,7 @@ async def create_welcome_image(member):
     name_text_x = (img_width - name_text_width) / 2
     welcome_bbox_for_height = draw.textbbox((0, 0), welcome_text, font=font_welcome)
     welcome_actual_height = welcome_bbox_for_height[3] - welcome_bbox_for_height[1]
-    name_text_y = welcome_text_y_pos + welcome_actual_height + 10 # Khoảng cách ban đầu
+    name_text_y = welcome_text_y_pos + welcome_actual_height + 20 # Khoảng cách ban đầu
 
     # LÀM SÁNG BÓNG CỦA CHỮ TÊN
     shadow_color_name_rgb = adjust_color_brightness_saturation(
