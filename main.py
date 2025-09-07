@@ -1,4 +1,4 @@
-import discord
+bot = commands.Botimport discord
 from discord.ext import commands, tasks
 from discord import app_commands
 import os
@@ -47,6 +47,11 @@ intents.message_content = True
 intents.presences = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, reconnect=True)
+intents = discord.Intents.default()
+intents.voice_states = True # Bật intents này
+intents.messages = True
+intents.message_content = True 
+intents.members = True 
 
 # --- Các hàm xử lý màu sắc ---
 def rgb_to_hsl(r, g, b):
