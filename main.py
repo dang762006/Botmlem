@@ -770,7 +770,7 @@ async def on_message(message):
 
     content = message.content.lower()
 
-    if "hello" in content or "hi" in content:
+    if "hello" in content or "có ai ko" in content:
         await message.channel.send(f"Chào {message.author.mention} 😎")
 
     if "ping" in content:
@@ -779,6 +779,31 @@ async def on_message(message):
     # Đừng quên thêm dòng này để slash command vẫn hoạt động
     await bot.process_commands(message)
 
+# --- Slash Command: /afkvoice ---
+@bot.tree.command(name="afkvoice", description="Cho bot join vào voice channel để giữ phòng (AFK).")
+@app_commands.checks.has_permissions(administrator=True)  # chỉ admin dùng
+async def afkvoice(interaction: discord.Interaction):
+    if interaction.user.voice is None:
+        await interaction.response.send_message("❌ Bạn phải đang ở trong voice channel để dùng lệnh này.", ephemeral=True)
+        return
+
+    channel = interaction.user.voice.channel
+    try:
+        await channel.connect()
+        await interaction.response.send_message(f"✅ Bot đã join vào kênh voice **{channel.name}** để giữ phòng.", ephemeral=True)
+    except discord.ClientException:
+        await interaction.response.send_message("⚠️ Bot đã ở trong một voice channel khác rồi.", ephemeral=True)
+
+# --- Slash Command: /leavevoice ---
+@bot.tree.command(name="leavevoice", description="Cho bot rời khỏi voice channel.")
+@app_commands.checks.has_permissions(administrator=True)
+async def leavevoice(interaction: discord.Interaction):
+    if interaction.guild.voice_client:
+        await interaction.guild.voice_client.disconnect()
+        await interaction.response.send_message("👋 Bot đã rời khỏi voice channel.", ephemeral=True)
+    else:
+        await interaction.response.send_message("❌ Bot hiện không ở trong voice channel nào.", ephemeral=True)
+        
 # --- Slash Command: /skibidi (Chỉ dành cho những người có vai trò cụ thể) ---
 # Dòng này kiểm tra xem người dùng có vai trò với ID 1322844864760516691 hay không.
 # Nếu không có, lệnh sẽ không hoạt động.
