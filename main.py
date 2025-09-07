@@ -44,14 +44,12 @@ TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 intents = discord.Intents.default()
 intents.members = True
 intents.message_content = True
+intents.messages = True
+intents.members = True
+intents.voice_states = True # <- Đây là intent quan trọng nhất
 intents.presences = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, reconnect=True)
-intents = discord.Intents.default()
-intents.voice_states = True # Bật intents này
-intents.messages = True
-intents.message_content = True 
-intents.members = True 
 
 # --- Các hàm xử lý màu sắc ---
 def rgb_to_hsl(r, g, b):
