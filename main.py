@@ -689,8 +689,8 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
 # --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
+    # Khởi tạo semaphore nếu chưa tồn tại
     global IMAGE_GEN_SEMAPHORE
-
     if IMAGE_GEN_SEMAPHORE is None:
         IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)
 
@@ -700,23 +700,21 @@ async def on_ready():
     print(f"🌐 Server(s) : {len(bot.guilds)}")
     print("===================================")
 
-    # Workers
+    # Đồng bộ hóa toàn cầu cho tất cả các server
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ Đã đồng bộ {len(synced)} lệnh slash commands trên toàn cầu.")
+        for cmd in synced:
+            print(f"   └─ /{cmd.name}")
+    except Exception as e:
+        print(f"❌ Lỗi khi đồng bộ slash command: {e}")
+        
+    # Khởi động các tác vụ chạy nền
     if not getattr(bot, "bg_tasks_started", False):
         bot.bg_tasks_started = True
         bot.loop.create_task(activity_heartbeat_worker())
         bot.loop.create_task(random_message_worker())
         print("⚙️ Background workers đã được khởi động.")
-
-    # Sync lệnh chỉ cho server chính
-    try:
-        guild_id = 913046733796311040
-        guild = discord.Object(id=guild_id)
-        synced = await bot.tree.sync(guild=guild)
-        print(f"✅ Đã sync {len(synced)} lệnh slash trong server {guild_id}")
-        for cmd in synced:
-            print(f"   └─ /{cmd.name} : {cmd.description}")
-    except Exception as e:
-        print(f"❌ Lỗi khi sync slash command: {e}")
 
 
 @bot.event
