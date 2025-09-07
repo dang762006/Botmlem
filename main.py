@@ -618,6 +618,7 @@ async def random_message_worker():
 @bot.tree.command(name="afkvoice", description="Cho bot join vào voice channel để giữ phòng (AFK).")
 @app_commands.checks.has_permissions(administrator=True)
 async def afkvoice(interaction: discord.Interaction):
+    print("Đang chạy lệnh /afkvoice") # Dòng này để debug
     if interaction.user.voice is None:
         await interaction.response.send_message(
             "❌ Bạn phải đang ở trong voice channel để dùng lệnh này.", ephemeral=True
