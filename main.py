@@ -616,7 +616,6 @@ async def random_message_worker():
 async def on_ready():
     global IMAGE_GEN_SEMAPHORE
 
-    # Tạo Semaphore để limit số ảnh welcome sinh song song
     if IMAGE_GEN_SEMAPHORE is None:
         IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)
 
@@ -625,6 +624,13 @@ async def on_ready():
     print(f"👤 Tên bot   : {bot.user} (ID: {bot.user.id})")
     print(f"🌐 Server(s) : {len(bot.guilds)}")
     print("===================================")
+
+    # --- Chạy background workers ---
+    if not getattr(bot, "bg_tasks_started", False):
+        bot.bg_tasks_started = True
+        bot.loop.create_task(activity_heartbeat_worker())
+        bot.loop.create_task(random_message_worker())
+        print("⚙️ Background workers đã được khởi động.")
 
     # --- Sync slash command chỉ cho 1 server ---
     try:
@@ -636,13 +642,6 @@ async def on_ready():
             print(f"   └─ /{cmd.name} : {cmd.description}")
     except Exception as e:
         print(f"❌ Lỗi khi sync slash command: {e}")
-
-    # --- Chạy background workers ---
-    if not getattr(bot, "bg_tasks_started", False):
-        bot.bg_tasks_started = True
-        bot.loop.create_task(activity_heartbeat_worker())
-        bot.loop.create_task(random_message_worker())
-        print("⚙️ Background workers đã được khởi động.")
 
 @bot.event
 async def on_member_join(member):
