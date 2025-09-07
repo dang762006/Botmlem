@@ -9,6 +9,7 @@ import asyncio
 import random
 import requests
 import threading
+import traceback
 from flask import Flask
 from colorthief import ColorThief
 
@@ -618,38 +619,49 @@ async def random_message_worker():
 @bot.tree.command(name="afkvoice", description="Cho bot join vào voice channel để giữ phòng (AFK).")
 @app_commands.checks.has_permissions(administrator=True)
 async def afkvoice(interaction: discord.Interaction):
-    print("Đang chạy lệnh /afkvoice") # Dòng này để debug
-    if interaction.user.voice is None:
-        await interaction.response.send_message(
-            "❌ Bạn phải đang ở trong voice channel để dùng lệnh này.", ephemeral=True
-        )
-        return
-
-    channel = interaction.user.voice.channel
     try:
+        if interaction.user.voice is None:
+            await interaction.response.send_message(
+                "❌ Bạn phải đang ở trong voice channel để dùng lệnh này.", ephemeral=True
+            )
+            return
+
+        channel = interaction.user.voice.channel
         await channel.connect()
         await interaction.response.send_message(
             f"✅ Bot đã join vào kênh voice **{channel.name}** để giữ phòng.", ephemeral=True
         )
-    except discord.ClientException:
+    except discord.ClientException as e:
         await interaction.response.send_message(
-            "⚠️ Bot đã ở trong một voice channel khác rồi.", ephemeral=True
+            f"⚠️ Lỗi Discord: {e}", ephemeral=True
         )
-
+    except Exception as e:
+        error_traceback = traceback.format_exc()
+        await interaction.response.send_message(
+            f"❌ **Lỗi không xác định:** `Lỗi: {e}`\n"
+            f"Vui lòng gửi cho tôi ảnh chụp màn hình này để gỡ lỗi: \n```\n{error_traceback[-1000:]}...\n```",
+            ephemeral=True
+        )
 
 # --- Slash Command: /leavevoice ---
 @bot.tree.command(name="leavevoice", description="Cho bot rời khỏi voice channel.")
 @app_commands.checks.has_permissions(administrator=True)
 async def leavevoice(interaction: discord.Interaction):
-    if interaction.guild.voice_client:
-        await interaction.guild.voice_client.disconnect()
-        await interaction.response.send_message("👋 Bot đã rời khỏi voice channel.", ephemeral=True)
-    else:
+    try:
+        if interaction.guild.voice_client:
+            await interaction.guild.voice_client.disconnect()
+            await interaction.response.send_message("👋 Bot đã rời khỏi voice channel.", ephemeral=True)
+        else:
+            await interaction.response.send_message(
+                "❌ Bot hiện không ở trong voice channel nào.", ephemeral=True
+            )
+    except Exception as e:
+        error_traceback = traceback.format_exc()
         await interaction.response.send_message(
-            "❌ Bot hiện không ở trong voice channel nào.", ephemeral=True
+            f"❌ **Lỗi không xác định:** `Lỗi: {e}`\n"
+            f"Vui lòng gửi cho tôi ảnh chụp màn hình này để gỡ lỗi: \n```\n{error_traceback[-1000:]}...\n```",
+            ephemeral=True
         )
-
-
 # --- Slash Command: /skibidi ---
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 @app_commands.checks.has_role(1412820448499990629)  # check role
