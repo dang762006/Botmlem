@@ -570,7 +570,6 @@ async def activity_heartbeat_worker():
             print(f"LỖI ACTIVITY_HEARTBEAT_WORKER: {e}")
             await asyncio.sleep(30)
 
-
 # Worker gửi tin nhắn ngẫu nhiên
 async def random_message_worker():
     await bot.wait_until_ready()
@@ -612,6 +611,79 @@ async def random_message_worker():
             await asyncio.sleep(30)
 
 # --- Các sự kiện của bot ---
+# --- Slash Command: /afkvoice ---
+@bot.tree.command(name="afkvoice", description="Cho bot join vào voice channel để giữ phòng (AFK).")
+@app_commands.checks.has_permissions(administrator=True)
+async def afkvoice(interaction: discord.Interaction):
+    if interaction.user.voice is None:
+        await interaction.response.send_message(
+            "❌ Bạn phải đang ở trong voice channel để dùng lệnh này.", ephemeral=True
+        )
+        return
+
+    channel = interaction.user.voice.channel
+    try:
+        await channel.connect()
+        await interaction.response.send_message(
+            f"✅ Bot đã join vào kênh voice **{channel.name}** để giữ phòng.", ephemeral=True
+        )
+    except discord.ClientException:
+        await interaction.response.send_message(
+            "⚠️ Bot đã ở trong một voice channel khác rồi.", ephemeral=True
+        )
+
+
+# --- Slash Command: /leavevoice ---
+@bot.tree.command(name="leavevoice", description="Cho bot rời khỏi voice channel.")
+@app_commands.checks.has_permissions(administrator=True)
+async def leavevoice(interaction: discord.Interaction):
+    if interaction.guild.voice_client:
+        await interaction.guild.voice_client.disconnect()
+        await interaction.response.send_message("👋 Bot đã rời khỏi voice channel.", ephemeral=True)
+    else:
+        await interaction.response.send_message(
+            "❌ Bot hiện không ở trong voice channel nào.", ephemeral=True
+        )
+
+
+# --- Slash Command: /skibidi ---
+@bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
+@app_commands.checks.has_role(1412820448499990629)  # check role
+async def skibidi(interaction: discord.Interaction):
+    await interaction.response.send_message(
+        "<a:cat2:1323314096040448145>**✦** ***[AN BA TO KOM](https://dawnwibu.carrd.co)*** **✦** <a:cat3:1323314218476372122>"
+    )
+
+
+# --- Slash Command: /testwelcome ---
+@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
+@app_commands.checks.has_permissions(administrator=True)
+async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
+    member_to_test = user if user else interaction.user
+    await interaction.response.defer(thinking=True)
+
+    try:
+        print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
+        if IMAGE_GEN_SEMAPHORE:
+            async with IMAGE_GEN_SEMAPHORE:
+                image_bytes = await create_welcome_image(member_to_test)
+        else:
+            image_bytes = await create_welcome_image(member_to_test)
+
+        await interaction.followup.send(
+            file=discord.File(fp=image_bytes, filename="welcome_test.png")
+        )
+        print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name}.")
+    except Exception as e:
+        await interaction.followup.send(
+            f"Có lỗi khi tạo hoặc gửi ảnh test: {e}\nKiểm tra lại hàm `create_welcome_image`."
+        )
+        print(f"LỖI TEST: {e}")
+
+
+# --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
     global IMAGE_GEN_SEMAPHORE
@@ -625,16 +697,16 @@ async def on_ready():
     print(f"🌐 Server(s) : {len(bot.guilds)}")
     print("===================================")
 
-    # --- Chạy background workers ---
+    # Workers
     if not getattr(bot, "bg_tasks_started", False):
         bot.bg_tasks_started = True
         bot.loop.create_task(activity_heartbeat_worker())
         bot.loop.create_task(random_message_worker())
         print("⚙️ Background workers đã được khởi động.")
 
-    # --- Sync slash command chỉ cho 1 server ---
+    # Sync lệnh chỉ cho server chính
     try:
-        guild_id = 913046733796311040  # ID server của bạn
+        guild_id = 913046733796311040
         guild = discord.Object(id=guild_id)
         synced = await bot.tree.sync(guild=guild)
         print(f"✅ Đã sync {len(synced)} lệnh slash trong server {guild_id}")
@@ -642,6 +714,7 @@ async def on_ready():
             print(f"   └─ /{cmd.name} : {cmd.description}")
     except Exception as e:
         print(f"❌ Lỗi khi sync slash command: {e}")
+
 
 @bot.event
 async def on_member_join(member):
@@ -777,67 +850,6 @@ async def on_message(message):
 
     # Đừng quên thêm dòng này để slash command vẫn hoạt động
     await bot.process_commands(message)
-
-# --- Slash Command: /afkvoice ---
-@bot.tree.command(name="afkvoice", description="Cho bot join vào voice channel để giữ phòng (AFK).")
-@app_commands.checks.has_permissions(administrator=True)  # chỉ admin dùng
-async def afkvoice(interaction: discord.Interaction):
-    if interaction.user.voice is None:
-        await interaction.response.send_message("❌ Bạn phải đang ở trong voice channel để dùng lệnh này.", ephemeral=True)
-        return
-
-    channel = interaction.user.voice.channel
-    try:
-        await channel.connect()
-        await interaction.response.send_message(f"✅ Bot đã join vào kênh voice **{channel.name}** để giữ phòng.", ephemeral=True)
-    except discord.ClientException:
-        await interaction.response.send_message("⚠️ Bot đã ở trong một voice channel khác rồi.", ephemeral=True)
-
-# --- Slash Command: /leavevoice ---
-@bot.tree.command(name="leavevoice", description="Cho bot rời khỏi voice channel.")
-@app_commands.checks.has_permissions(administrator=True)
-async def leavevoice(interaction: discord.Interaction):
-    if interaction.guild.voice_client:
-        await interaction.guild.voice_client.disconnect()
-        await interaction.response.send_message("👋 Bot đã rời khỏi voice channel.", ephemeral=True)
-    else:
-        await interaction.response.send_message("❌ Bot hiện không ở trong voice channel nào.", ephemeral=True)
-        
-# --- Slash Command: /skibidi (Chỉ dành cho những người có vai trò cụ thể) ---
-# Dòng này kiểm tra xem người dùng có vai trò với ID 1322844864760516691 hay không.
-# Nếu không có, lệnh sẽ không hoạt động.
-@bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
-@app_commands.checks.has_role(1412820448499990629)
-async def skibidi(interaction: discord.Interaction):
-    await interaction.response.send_message(
-        "<a:cat2:1323314096040448145>**✦** ***[AN BA TO KOM](https://dawnwibu.carrd.co)*** **✦** <a:cat3:1323314218476372122>"
-    )
-
-# --- Slash Command: /testwelcome (Chỉ quản trị viên) ---
-@bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
-@app_commands.default_permissions(administrator=True) # Quyền: Chỉ quản trị viên
-@app_commands.describe(user="Người dùng bạn muốn test (mặc định là chính bạn).")
-@app_commands.checks.has_permissions(administrator=True) # Kiểm tra bổ sung trong code
-async def testwelcome_slash(interaction: discord.Interaction, user: discord.Member = None):
-    member_to_test = user if user else interaction.user
-    await interaction.response.defer(thinking=True)
-
-    try:
-        print(f"DEBUG: Đang tạo ảnh chào mừng cho {member_to_test.display_name}...")
-        if IMAGE_GEN_SEMAPHORE:
-            async with IMAGE_GEN_SEMAPHORE:
-                image_bytes = await create_welcome_image(member_to_test)
-        else:
-            image_bytes = await create_welcome_image(member_to_test)
-
-        await interaction.followup.send(file=discord.File(fp=image_bytes, filename='welcome_test.png'))
-        print(f"DEBUG: Đã gửi ảnh test chào mừng cho {member_to_test.display_name} thông qua lệnh slash.")
-    except Exception as e:
-        await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: {e}\nKiểm tra lại hàm `create_welcome_image`.")
-        print(f"LỖI TEST: Có lỗi khi tạo hoặc gửi ảnh test: {e}")
-        import traceback
-        traceback.print_exc()
-from discord.ui import Button, View
 
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
