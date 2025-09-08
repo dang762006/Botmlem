@@ -728,7 +728,23 @@ async def on_ready():
         bot.loop.create_task(activity_heartbeat_worker())
         bot.loop.create_task(random_message_worker())
         print("⚙️ Background workers đã được khởi động.")
+        bot.loop.create_task(flask_ping_worker())
+        print("⚙️ flask_ping_worker đã được khởi động để giữ bot luôn online.")
 
+# --- Task tự ping Flask để giữ bot active ---
+async def flask_ping_worker():
+    await bot.wait_until_ready()
+    print("DEBUG: flask_ping_worker bắt đầu ping Flask để giữ bot online.")
+
+    flask_url = "https://botmlem.onrender.com/healthz"  # URL Flask app của ông
+
+    while True:
+        try:
+            await asyncio.sleep(300)  # Ping mỗi 5 phút
+            response = requests.get(flask_url, timeout=10)
+            print(f"DEBUG: Ping {flask_url}, status_code={response.status_code}")
+        except Exception as e:
+            print(f"LỖI PING FLASK: {e}")
 
 @bot.event
 async def on_member_join(member):
