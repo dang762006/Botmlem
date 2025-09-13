@@ -16,41 +16,45 @@ from colorthief import ColorThief
 # --- Khởi tạo Flask app ---
 app = Flask(__name__)
 
+@app.route("/ping/<token>")
+def ping_token(token):
+    if token != os.getenv("DISCORD_BOT_TOKEN"):  # check token từ biến môi trường
+        return "forbidden", 403
+    return "OK", 200
+
+@app.route("/ping-r/<int:rnum>")
+def ping_random(rnum):
+    return f"pong {rnum}", 200
+
 @app.route('/')
 def home():
-    """Endpoint chính cho Flask app. Có thể dùng làm Health Check nếu cần."""
     return "Bot is alive and healthy!"
 
 @app.route('/healthz')
 def health_check():
-    """Endpoint Health Check riêng biệt cho Render.com hoặc Replit."""
     return "OK", 200
 
 def run_flask():
-    """Chạy Flask app trong một luồng riêng biệt và bắt đầu tự ping."""
+    """Chạy Flask app trong 1 thread riêng"""
     port = int(os.environ.get("PORT", 10000))
-    print(f"Flask server đang chạy trên cổng {port} (để Health Check).")
-
-    # NOTE: Không dùng self-ping nội bộ trên Render — Render tính traffic bên ngoài.
-    # Nếu cần giữ alive, sử dụng dịch vụ ngoài như UptimeRobot để ping /healthz mỗi 5 phút.
-    print("DEBUG: Flask server ready. Use an external uptime monitor (UptimeRobot) to ping /healthz every 5 min.")
-
-
-    app.run(host='0.0.0.0', port=port,
-            debug=False)
+    print(f"Flask server running on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 # --- Cấu hình Bot Discord ---
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
 
 intents = discord.Intents.default()
-intents.members = True
 intents.message_content = True
 intents.messages = True
 intents.members = True
-intents.voice_states = True # <- Đây là intent quan trọng nhất
+intents.voice_states = True  # <- intent quan trọng nhất
 intents.presences = True
 
 bot = commands.Bot(command_prefix="!", intents=intents, reconnect=True)
+
+# --- Run cả Flask và Bot ---
+threading.Thread(target=run_flask).start()
+bot.run(TOKEN)
 
 # --- Các hàm xử lý màu sắc ---
 def rgb_to_hsl(r, g, b):
