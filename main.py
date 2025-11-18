@@ -461,6 +461,45 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: `{e}`\nKiểm tra lại hàm `create_welcome_image`.")
         print(f"LỖI TEST: {e}")
 
+# --- Thêm Slash Command: /active ---
+# Lệnh này dùng để Discord ghi nhận bot CÓ hoạt động Slash Command.
+@bot.tree.command(name="active", description="Lệnh dùng nội bộ để duy trì huy hiệu Nhà phát triển Hoạt động.")
+@app_commands.default_permissions(administrator=True) 
+async def active_slash(interaction: discord.Interaction):
+    await interaction.response.send_message("✅ Bot đã nhận lệnh /active. Huy hiệu đang được bảo trì!", ephemeral=True)
+    print(f"DEBUG: Lệnh /active đã được thực thi bởi {interaction.user.display_name}.")
+
+# --- Task Tự Động Kích Hoạt Nhắc Nhở (Mỗi 28 Ngày) ---
+@tasks.loop(hours=24 * 28) # Lặp lại mỗi 28 ngày
+async def active_developer_maintenance():
+    await bot.wait_until_ready()
+    
+    # ⚠️ THAY THẾ ID SERVER (GUILD ID) NÀY BẰNG ID SERVER CHÍNH CỦA BẠN.
+    # Lấy ID bằng cách bật Developer Mode trong Discord -> Chuột phải vào tên Server -> Copy ID
+    TARGET_GUILD_ID = 913046733796311040 # ⬅️ THAY THẾ ID NÀY
+    
+    # Kênh NOTIFY_CHANNEL_ID của bạn là 1368613831529726137
+    # Bạn có thể dùng ID này, hoặc thay thế bằng ID KÊNH DEV BẠN MUỐN NHẬN THÔNG BÁO.
+    NOTIFY_CHANNEL_ID = 1322821956805988355 # ⬅️ THAY THẾ ID NÀY (NẾU CẦN)
+    
+    guild = bot.get_guild(TARGET_GUILD_ID)
+    channel = bot.get_channel(NOTIFY_CHANNEL_ID)
+
+    if not guild or not channel:
+        print(f"LỖI CẤU HÌNH: Không tìm thấy Server ({TARGET_GUILD_ID}) hoặc Kênh ({NOTIFY_CHANNEL_ID}).")
+        return
+
+    try:
+        # Gửi tin nhắn cảnh báo để bạn chạy lệnh thủ công
+        await channel.send(
+            f"{guild.owner_id}> **⚠️ CẢNH BÁO HUY HIỆU:** Đã 28 ngày! Vui lòng **gõ lệnh `/active`** trong kênh này HOẶC kênh dev **ngay lập tức** để duy trì huy hiệu **Nhà phát triển Hoạt động**! Lệnh sẽ tự động nhắc lại sau 28 ngày nữa."
+        )
+        print(f"DEBUG: Đã gửi tin nhắn nhắc nhở duy trì huy hiệu thành công trên server {guild.name}.")
+
+    except Exception as e:
+        print(f"LỖI TASK DUY TRÌ HUY HIỆU: {e}")
+        pass
+
 # --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
@@ -487,6 +526,7 @@ async def on_ready():
         bot.loop.create_task(activity_heartbeat_worker())
         bot.loop.create_task(random_message_worker())
         bot.loop.create_task(flask_ping_worker())
+        active_developer_maintenance.start()
         print("⚙️ Background workers đã được khởi động.")
 
 # --- Task tự ping Flask để giữ bot active ---
