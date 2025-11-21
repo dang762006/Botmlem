@@ -437,7 +437,7 @@ async def leavevoice(interaction: discord.Interaction):
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 @app_commands.checks.has_role(1412820448499990629)
 async def skibidi(interaction: discord.Interaction):
-    await interaction.response.send_message("<a:cat2:1323314096040448145>**✦** ***[AN BA TO KOM](https://dawnwibu.carrd.co)*** **✦** <a:cat3:1323314218476372122>")
+    await interaction.response.send_message("<a:cat2:1323314096040448145>**✦** ***[AN BA TO KOM](https://guns.lol/dawn._.wibu)*** **✦** <a:cat3:1323314218476372122>")
 
 # --- Slash Command: /testwelcome ---
 @bot.tree.command(name="testwelcome", description="Tạo và gửi ảnh chào mừng cho người dùng.")
