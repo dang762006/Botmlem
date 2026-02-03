@@ -34,10 +34,11 @@ def health_check():
     return "OK", 200
 
 def run_flask():
-    """Chạy Flask app trong 1 thread riêng"""
+    """Chạy Flask app với cấu hình ổn định hơn"""
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server running on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Thêm threaded=True để tránh treo luồng
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
 
 # --- Cấu hình Bot Discord ---
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
@@ -531,11 +532,24 @@ async def on_ready():
 
 # --- Task tự ping Flask để giữ bot active ---
 async def flask_ping_worker():
-    """Chỉ ghi log, không tự ping để tránh Cloudflare Rate Limit"""
+    """Giữ bot thức bằng cách tự tác động vào Flask nội bộ"""
     await bot.wait_until_ready()
-    print("DEBUG: Hệ thống Flask đã sẵn sàng. Khuyến khích dùng UptimeRobot để ping thay vì tự ping.")
+    print("DEBUG: Khởi chạy trình giữ máy (Anti-Sleep)...")
+    
     while True:
-        await asyncio.sleep(3600) # Treo máy 1 tiếng để không tốn tài nguyên
+        try:
+            # Giả lập một request nội bộ không qua Internet để Render thấy bot đang 'xử lý'
+            with app.test_client() as client:
+                client.get('/')
+            
+            # Ghi log nhẹ để biết bot vẫn đang thức
+            # print("DEBUG: Internal Keep-alive heartbeat sent.") 
+            
+            # Cứ mỗi 5 phút làm 1 lần (Render ngủ sau 15p)
+            await asyncio.sleep(300) 
+        except Exception as e:
+            print(f"LỖI KEEP-ALIVE: {e}")
+            await asyncio.sleep(60)
 
 @bot.event
 async def on_member_join(member):
