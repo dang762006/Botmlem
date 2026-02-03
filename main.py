@@ -34,11 +34,10 @@ def health_check():
     return "OK", 200
 
 def run_flask():
-    """Chạy Flask app với cấu hình ổn định hơn"""
+    """Chạy Flask app trong 1 thread riêng"""
     port = int(os.environ.get("PORT", 10000))
     print(f"Flask server running on port {port}")
-    # Thêm threaded=True để tránh treo luồng
-    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 # --- Cấu hình Bot Discord ---
 TOKEN = os.getenv('DISCORD_BOT_TOKEN')
@@ -532,24 +531,18 @@ async def on_ready():
 
 # --- Task tự ping Flask để giữ bot active ---
 async def flask_ping_worker():
-    """Giữ bot thức bằng cách tự tác động vào Flask nội bộ"""
     await bot.wait_until_ready()
-    print("DEBUG: Khởi chạy trình giữ máy (Anti-Sleep)...")
-    
-    while True:
-        try:
-            # Giả lập một request nội bộ không qua Internet để Render thấy bot đang 'xử lý'
-            with app.test_client() as client:
-                client.get('/')
-            
-            # Ghi log nhẹ để biết bot vẫn đang thức
-            # print("DEBUG: Internal Keep-alive heartbeat sent.") 
-            
-            # Cứ mỗi 5 phút làm 1 lần (Render ngủ sau 15p)
-            await asyncio.sleep(300) 
-        except Exception as e:
-            print(f"LỖI KEEP-ALIVE: {e}")
-            await asyncio.sleep(60)
+    print("DEBUG: flask_ping_worker bắt đầu ping Flask để giữ bot online.")
+    flask_url = "https://botmlem.onrender.com/healthz"
+    # SỬA LỖI: Dùng aiohttp để không block bot
+    async with aiohttp.ClientSession() as session:
+        while True:
+            try:
+                await asyncio.sleep(300)
+                async with session.get(flask_url, timeout=10) as response:
+                    print(f"DEBUG: Ping {flask_url}, status_code={response.status}")
+            except Exception as e:
+                print(f"LỖI PING FLASK: {e}")
 
 @bot.event
 async def on_member_join(member):
@@ -637,52 +630,40 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             break
 
 # --- Auto Reply theo keyword ---
-# Biến lưu thời gian phản hồi gần nhất để tránh bị spam
-last_auto_reply = {}
-
 @bot.event
 async def on_message(message):
     if message.author.bot: return
-    
     content = message.content.lower()
-    now = asyncio.get_event_loop().time()
-    user_id = message.author.id
-
-    # Chỉ phản hồi nếu cách lần cuối của user đó > 10 giây
-    if now - last_auto_reply.get(user_id, 0) > 10:
-        if any(word in content for word in ["hello", "có ai ko", "hi"]):
-            await message.channel.send(f"Chào {message.author.mention} 😎")
-            last_auto_reply[user_id] = now
-        
-        elif content == "ping": # Dùng elif để tối ưu
-            await message.channel.send("Pong 🏓")
-            last_auto_reply[user_id] = now
-
+    if "hello" in content or "có ai ko" in content:
+        await message.channel.send(f"Chào {message.author.mention} 😎")
+    if "ping" in content:
+        await message.channel.send("Pong 🏓")
     await bot.process_commands(message)
 
 # --- Khởi chạy Flask và Bot Discord ---
 async def start_bot_and_flask():
-    """Khởi động với cơ chế xử lý lỗi 1015 (Cloudflare)"""
+    """Hàm async để khởi động Flask + bot Discord với delay và restart chậm (avoid rate limit)."""
     flask_thread = threading.Thread(target=run_flask)
     flask_thread.daemon = True
     flask_thread.start()
-
-    print("DEBUG: Đang chuẩn bị kết nối Discord...")
-    await asyncio.sleep(10) 
-
+    delay_before_login = 30
+    print(f"DEBUG: Đang đợi {delay_before_login}s trước khi khởi động bot Discord để tránh rate limit...")
+    await asyncio.sleep(delay_before_login)
+    print("DEBUG: Bắt đầu khởi động bot Discord...")
     while True:
         try:
             await bot.start(TOKEN)
+            break
         except discord.errors.HTTPException as e:
-            # Lỗi 429 là từ Discord, lỗi 1015 là từ Cloudflare
-            if e.status == 429 or e.status == 1015:
-                print(f"⚠️ CẢNH BÁO: Đang bị Rate Limit (Lỗi {e.status}). Đợi 10 phút để IP sạch lại...")
-                await asyncio.sleep(600) 
+            if getattr(e, 'status', None) == 429:
+                print(f"Lỗi 429 Too Many Requests khi đăng nhập: {e}")
+                print("Có vẻ như Discord đã giới hạn tốc độ đăng nhập. Đợi 5-10 phút trước khi thử lại.")
+                await asyncio.sleep(300)
             else:
-                print(f"❌ Lỗi HTTP {e.status}: {e}. Thử lại sau 60s...")
+                print(f"Một lỗi HTTP khác khi đăng nhập: {e}")
                 await asyncio.sleep(60)
         except Exception as e:
-            print(f"❌ Lỗi kết nối: {e}. Thử lại sau 60s...")
+            print(f"Một lỗi không xác định đã xảy ra: {e}. Restart sau 60s...")
             await asyncio.sleep(60)
 
 if __name__ == "__main__":
