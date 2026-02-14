@@ -506,14 +506,18 @@ async def flask_ping_worker():
     print("DEBUG: flask_ping_worker bắt đầu ping Flask để giữ bot online.")
     flask_url = "https://botmlem.onrender.com/healthz"
     # SỬA LỖI: Dùng aiohttp để không block bot
-    async with aiohttp.ClientSession() as session:
-        while True:
-            try:
-                await asyncio.sleep(300)
-                async with session.get(flask_url, timeout=10) as response:
-                    print(f"DEBUG: Ping {flask_url}, status_code={response.status}")
-            except Exception as e:
-                print(f"LỖI PING FLASK: {e}")
+    async def flask_ping_worker():
+    await bot.wait_until_ready()
+    print("DEBUG: flask_ping_worker bắt đầu ping Flask để giữ bot online.")
+    flask_url = "https://botmlem.onrender.com/healthz"
+    while True:
+        try:
+            await asyncio.sleep(300)
+            # Dùng bot.session đã khởi tạo ở on_ready
+            async with bot.session.get(flask_url, timeout=10) as response:
+                print(f"DEBUG: Ping {flask_url}, status_code={response.status}")
+        except Exception as e:
+            print(f"LỖI PING FLASK: {e}")
 
 @bot.event
 async def on_member_join(member):
