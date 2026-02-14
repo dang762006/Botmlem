@@ -368,7 +368,7 @@ async def activity_heartbeat_worker():
     print("DEBUG: activity_heartbeat_worker bắt đầu.")
     activities = [
         discord.Activity(type=discord.ActivityType.watching, name="Dawn_wibu phá đảo tựa game mới "),
-        discord.Activity(type=discord.ActivityType.listening, name="Bài TRÌNH "),
+        discord.Activity(type=discord.ActivityType.listening, name="TRÌNH "),
         discord.Activity(type=discord.ActivityType.playing, name="Minecraft cùng Anh Em "),
     ]
     while True:
@@ -404,35 +404,6 @@ async def random_message_worker():
             print(f"LỖI RANDOM_MESSAGE_WORKER: {e}")
             await asyncio.sleep(30)
 
-# --- Slash Command: /afkvoice ---
-@bot.tree.command(name="afkvoice", description="Cho bot join vào voice channel để giữ phòng (AFK).")
-@app_commands.checks.has_permissions(administrator=True)
-async def afkvoice(interaction: discord.Interaction):
-    try:
-        if interaction.user.voice is None:
-            await interaction.response.send_message("❌ Bạn phải đang ở trong voice channel để dùng lệnh này.", ephemeral=True)
-            return
-        if interaction.guild.voice_client:
-            await interaction.guild.voice_client.disconnect()
-        channel = interaction.user.voice.channel
-        await channel.connect()
-        await interaction.response.send_message(f"✅ Bot đã join vào kênh voice **{channel.name}** để giữ phòng.", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Có lỗi xảy ra: `{e}`", ephemeral=True)
-
-# --- Slash Command: /leavevoice ---
-@bot.tree.command(name="leavevoice", description="Cho bot rời khỏi voice channel.")
-@app_commands.checks.has_permissions(administrator=True)
-async def leavevoice(interaction: discord.Interaction):
-    try:
-        if interaction.guild.voice_client:
-            await interaction.guild.voice_client.disconnect()
-            await interaction.response.send_message("👋 Bot đã rời khỏi voice channel.", ephemeral=True)
-        else:
-            await interaction.response.send_message("❌ Bot hiện không ở trong voice channel nào.", ephemeral=True)
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Có lỗi xảy ra: `{e}`", ephemeral=True)
-
 # --- Slash Command: /skibidi ---
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
 @app_commands.checks.has_role(1412820448499990629)
@@ -460,14 +431,6 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: `{e}`\nKiểm tra lại hàm `create_welcome_image`.")
         print(f"LỖI TEST: {e}")
-
-# --- Thêm Slash Command: /active ---
-# Lệnh này dùng để Discord ghi nhận bot CÓ hoạt động Slash Command.
-@bot.tree.command(name="active", description="Lệnh dùng nội bộ để duy trì huy hiệu Nhà phát triển Hoạt động.")
-@app_commands.default_permissions(administrator=True) 
-async def active_slash(interaction: discord.Interaction):
-    await interaction.response.send_message("✅ Bot đã nhận lệnh /active. Huy hiệu đang được bảo trì!", ephemeral=True)
-    print(f"DEBUG: Lệnh /active đã được thực thi bởi {interaction.user.display_name}.")
 
 # --- Task Tự Động Kích Hoạt Nhắc Nhở (Mỗi 28 Ngày) ---
 @tasks.loop(hours=24 * 28) # Lặp lại mỗi 28 ngày
@@ -630,14 +593,41 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             break
 
 # --- Auto Reply theo keyword ---
+from discord.ext import commands
+
+# 1. Thiết lập Cooldown: cho phép 1 tin nhắn mỗi 5 giây trên mỗi người dùng
+# (Bạn có thể chỉnh 1, 5 thành số khác tùy nhu cầu)
+_cooldown = commands.CooldownMapping.from_cooldown(1, 5, commands.BucketType.user)
+
 @bot.event
 async def on_message(message):
-    if message.author.bot: return
-    content = message.content.lower()
-    if "hello" in content or "có ai ko" in content:
-        await message.channel.send(f"Chào {message.author.mention} 😎")
-    if "ping" in content:
-        await message.channel.send("Pong 🏓")
+    if message.author.bot: 
+        return
+
+    # strip() để loại bỏ khoảng trắng dư thừa ở đầu/cuối
+    content = message.content.lower().strip()
+
+    # Danh sách từ khóa khớp 100%
+    responses = {
+        "ping": "Pong 🏓",
+        "hello": f"Chào {message.author.mention} 😎",
+        "có ai ko": f"Có tui nè {message.author.mention} 😘"
+    }
+
+    # 2. Kiểm tra xem nội dung có khớp TUYỆT ĐỐI trong danh sách không
+    if content in responses:
+        # 3. Kiểm tra Cooldown (Chống spam)
+        bucket = _cooldown.get_bucket(message)
+        retry_after = bucket.update_rate_limit()
+        
+        if retry_after:
+            # Nếu đang bị cooldown thì im lặng (hoặc báo lỗi nếu muốn)
+            return 
+
+        # Nếu vượt qua cooldown thì mới gửi tin nhắn
+        await message.channel.send(responses[content])
+        return
+
     await bot.process_commands(message)
 
 # --- Khởi chạy Flask và Bot Discord ---
