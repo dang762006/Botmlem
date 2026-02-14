@@ -197,25 +197,26 @@ def _load_background_image(path, default_dims):
 
 async def _get_and_process_avatar(member_avatar_url, avatar_size, cache):
     avatar_bytes = None
+    # Kiểm tra cache
     if member_avatar_url in cache and (asyncio.get_event_loop().time() - cache[member_avatar_url]['timestamp']) < CACHE_TTL:
         avatar_bytes = cache[member_avatar_url]['data']
-        print(f"DEBUG: Lấy avatar từ cache cho {member_avatar_url}.")
+        print(f"DEBUG: Lấy avatar từ cache.")
     else:
-        print(f"DEBUG: Đang tải avatar từ URL: {member_avatar_url}")
-        async with aiohttp.ClientSession() as session:
-            async with session.get(str(member_avatar_url)) as resp:
-                if resp.status != 200:
-                    print(f"LỖI AVATAR: Không thể tải avatar. Trạng thái: {resp.status}. Sử dụng avatar màu xám mặc định.")
-                else:
+        # Dùng session dùng chung để tải ảnh (Tối ưu ở đây)
+        try:
+            async with bot.session.get(str(member_avatar_url)) as resp:
+                if resp.status == 200:
                     avatar_bytes = await resp.read()
                     cache[member_avatar_url] = {'data': avatar_bytes, 'timestamp': asyncio.get_event_loop().time()}
-                    print(f"DEBUG: Đã tải và lưu avatar vào cache.")
+        except Exception as e:
+            print(f"LỖI TẢI AVATAR: {e}")
 
     if avatar_bytes:
         data = io.BytesIO(avatar_bytes)
         avatar_img = Image.open(data).convert("RGBA")
     else:
         avatar_img = Image.new('RGBA', (avatar_size, avatar_size), color=(100, 100, 100, 255))
+    
     avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
     return avatar_img, avatar_bytes
 
@@ -365,21 +366,23 @@ async def create_welcome_image(member):
 # --- Các worker và sự kiện Bot ---
 async def activity_heartbeat_worker():
     await bot.wait_until_ready()
-    print("DEBUG: activity_heartbeat_worker bắt đầu.")
     activities = [
-        discord.Activity(type=discord.ActivityType.watching, name="Dawn_wibu phá đảo tựa game mới "),
-        discord.Activity(type=discord.ActivityType.listening, name="TRÌNH "),
-        discord.Activity(type=discord.ActivityType.playing, name="Minecraft cùng Anh Em "),
+        discord.Activity(type=discord.ActivityType.watching, name="Dawn_wibu phá đảo game"),
+        discord.Activity(type=discord.ActivityType.listening, name="TRÌNH"),
     ]
     while True:
         try:
-            sleep_seconds = random.randint(60, 180)
-            await asyncio.sleep(sleep_seconds)
-            new_activity = random.choice(activities)
-            await bot.change_presence(activity=new_activity)
-            print(f"DEBUG: Đã cập nhật trạng thái bot thành: {new_activity.name} ({new_activity.type.name}).")
+            await asyncio.sleep(random.randint(60, 180))
+            # 1. Đổi trạng thái bot
+            await bot.change_presence(activity=random.choice(activities))
+            
+            # 2. TỐI ƯU: Dọn dẹp bộ nhớ (xóa avatar cũ trong cache)
+            now = asyncio.get_event_loop().time()
+            expired = [k for k, v in avatar_cache.items() if now - v['timestamp'] > CACHE_TTL]
+            for k in expired: del avatar_cache[k]
+            
         except Exception as e:
-            print(f"LỖI ACTIVITY_HEARTBEAT_WORKER: {e}")
+            print(f"LỖI WORKER: {e}")
             await asyncio.sleep(30)
 
 async def random_message_worker():
@@ -467,23 +470,28 @@ async def active_developer_maintenance():
 @bot.event
 async def on_ready():
     global IMAGE_GEN_SEMAPHORE
+    # THÊM DÒNG NÀY: Khởi tạo session để tải ảnh nhanh hơn
+    if not hasattr(bot, 'session'):
+        bot.session = aiohttp.ClientSession()
+        
     if IMAGE_GEN_SEMAPHORE is None:
         IMAGE_GEN_SEMAPHORE = asyncio.Semaphore(2)
-    # SỬA LỖI: Load tài nguyên toàn cục MỘT LẦN DUY NHẤT ở đây
+    
     _load_fonts(FONT_MAIN_PATH, FONT_SYMBOL_PATH)
     _load_background_image(BACKGROUND_IMAGE_PATH, DEFAULT_IMAGE_DIMENSIONS)
+    
     print("===================================")
     print(f"🤖 Bot đã đăng nhập thành công!")
-    print(f"👤 Tên bot   : {bot.user} (ID: {bot.user.id})")
+    print(f"👤 Tên bot    : {bot.user} (ID: {bot.user.id})")
     print(f"🌐 Server(s) : {len(bot.guilds)}")
     print("===================================")
+    
     try:
         synced = await bot.tree.sync()
-        print(f"✅ Đã đồng bộ {len(synced)} lệnh slash commands trên toàn cầu.")
-        for cmd in synced:
-            print(f"   └─ /{cmd.name}")
+        print(f"✅ Đã đồng bộ {len(synced)} lệnh slash commands.")
     except Exception as e:
         print(f"❌ Lỗi khi đồng bộ slash command: {e}")
+        
     if not getattr(bot, "bg_tasks_started", False):
         bot.bg_tasks_started = True
         bot.loop.create_task(activity_heartbeat_worker())
@@ -569,29 +577,35 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     before_roles = set(before.roles)
     after_roles = set(after.roles)
     new_roles = after_roles - before_roles
+    
     if not new_roles: return
+    
     for role_id in RANK_ROLES:
         role = after.guild.get_role(role_id)
         if role in new_roles:
+            # Gửi thông báo thăng cấp
             channel = after.guild.get_channel(NOTIFY_CHANNEL_ID)
             if channel:
                 role_display = ROLE_DISPLAY.get(role.id, role.name)
                 embed = discord.Embed(
                     title="⬆ LEVEL UP ⬆",
-                    description=(f"<a:cat3:1323314218476372122> Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!\n✦-------------------------------------------------------------✦"),
+                    description=(f"Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!"),
                     color=role.color if role.color.value else discord.Color.gold()
                 )
                 embed.set_thumbnail(url=after.display_avatar.url)
                 await channel.send(embed=embed)
-            role_index = RANK_ROLES.index(role_id)
-            lower_roles = RANK_ROLES[role_index + 1:]
-            for low_role_id in lower_roles:
-                low_role = after.guild.get_role(low_role_id)
-                if low_role in after.roles:
-                    await after.remove_roles(low_role)
-                    print(f"Đã xóa role {low_role.name} khỏi {after.display_name}")
-            break
 
+            # TỐI ƯU: Xóa tất cả role thấp hơn trong 1 lần gửi yêu cầu duy nhất
+            role_index = RANK_ROLES.index(role_id)
+            lower_role_ids = set(RANK_ROLES[role_index + 1:])
+            
+            # Tạo danh sách role mới (loại bỏ các role thấp)
+            final_roles = [r for r in after.roles if r.id not in lower_role_ids]
+            
+            if len(final_roles) != len(after.roles):
+                await after.edit(roles=final_roles)
+                print(f"Đã tối ưu: Xóa các role thấp cho {after.display_name}")
+            break
 # --- Auto Reply theo keyword ---
 from discord.ext import commands
 
