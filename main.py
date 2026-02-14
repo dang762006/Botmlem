@@ -607,8 +607,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 print(f"Đã tối ưu: Xóa các role thấp cho {after.display_name}")
             break
 # --- Auto Reply theo keyword ---
-from discord.ext import commands
-
 # 1. Thiết lập Cooldown: cho phép 1 tin nhắn mỗi 5 giây trên mỗi người dùng
 # (Bạn có thể chỉnh 1, 5 thành số khác tùy nhu cầu)
 _cooldown = commands.CooldownMapping.from_cooldown(1, 5, commands.BucketType.user)
