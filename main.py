@@ -625,7 +625,7 @@ async def on_message(message):
     responses = {
         "ping": "Pong 🏓",
         "hello": f"Chào {message.author.mention} 😎",
-        "có ai ko": f"Có tui nè {message.author.mention} 😘"
+        "có ai ko": f"Có tui nè {message.author.mention} 😘"
     }
 
     # 2. Kiểm tra xem nội dung có khớp TUYỆT ĐỐI trong danh sách không
