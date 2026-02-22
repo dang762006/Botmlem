@@ -592,6 +592,7 @@ async def on_message(message):
     responses = {
         "ping": "Pong 🏓",
         "hello": f"Chào {message.author.mention} 😎",
+        "hi": f"Chào {message.author.mention} <a:2:1387245423185498265>",
         "có ai ko": f"Có tui nè {message.author.mention} 😘"
     }
 
