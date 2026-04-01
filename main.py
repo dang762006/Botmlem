@@ -442,17 +442,19 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
     text="Chữ muốn hiển thị (ví dụ: 'Xem tại đây', mặc định là 'Link')"
 )
 async def create_link(interaction: discord.Interaction, url: str, text: str = "Link"):
-    # Kiểm tra xem có đúng là link không (cơ bản)
+    # Kiểm tra link hợp lệ cơ bản
     if not url.startswith(("http://", "https://")):
         await interaction.response.send_message("⚠️ Link phải bắt đầu bằng http:// hoặc https:// nha!", ephemeral=True)
         return
 
+    # Lấy tên hiển thị của người dùng lệnh
+    user_name = interaction.user.display_name
+    
     # Tạo định dạng [Chữ](Link)
-    # Dùng dấu < > bao quanh link để tránh Discord tự hiện preview ảnh/web nếu muốn (tùy ông)
-    # Ở đây tui để bình thường để nó hiện preview cho đẹp
     formatted_link = f"[{text}]({url})"
     
-    await interaction.response.send_message(f"✨ Đây là link của bạn: {formatted_link}")
+    # Gửi tin nhắn kèm tên người dùng
+    await interaction.response.send_message(f"✨ **{user_name}** đã chia sẻ: {formatted_link}")
 # --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
