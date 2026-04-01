@@ -434,7 +434,25 @@ async def testwelcome_slash(interaction: discord.Interaction, user: discord.Memb
     except Exception as e:
         await interaction.followup.send(f"Có lỗi khi tạo hoặc gửi ảnh test: `{e}`\nKiểm tra lại hàm `create_welcome_image`.")
         print(f"LỖI TEST: {e}")
+        
+# --- Slash Command: /link ---
+@bot.tree.command(name="link", description="Tạo một dòng chữ chứa link rút gọn (Markdown).")
+@app_commands.describe(
+    url="Dán cái link dài vào đây nè",
+    text="Chữ muốn hiển thị (ví dụ: 'Xem tại đây', mặc định là 'Link')"
+)
+async def create_link(interaction: discord.Interaction, url: str, text: str = "Link"):
+    # Kiểm tra xem có đúng là link không (cơ bản)
+    if not url.startswith(("http://", "https://")):
+        await interaction.response.send_message("⚠️ Link phải bắt đầu bằng http:// hoặc https:// nha!", ephemeral=True)
+        return
 
+    # Tạo định dạng [Chữ](Link)
+    # Dùng dấu < > bao quanh link để tránh Discord tự hiện preview ảnh/web nếu muốn (tùy ông)
+    # Ở đây tui để bình thường để nó hiện preview cho đẹp
+    formatted_link = f"[{text}]({url})"
+    
+    await interaction.response.send_message(f"✨ Đây là link của bạn: {formatted_link}")
 # --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
