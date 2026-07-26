@@ -367,8 +367,8 @@ async def create_welcome_image(member):
 async def activity_heartbeat_worker():
     await bot.wait_until_ready()
     activities = [
-        discord.Activity(type=discord.ActivityType.watching, name="Dawn_wibu phá đảo game"),
-        discord.Activity(type=discord.ActivityType.listening, name="TRÌNH"),
+        discord.Activity(type=discord.ActivityType.watching, name="Youtube Dawn_wibu"),
+        discord.Activity(type=discord.ActivityType.listening, name="Tiếng lòng của em"),
     ]
     while True:
         try:
@@ -390,7 +390,7 @@ async def random_message_worker():
     print("DEBUG: random_message_worker bắt đầu.")
     channel_id = 1379789952610467971
     messages = [
-        "Hôm nay trời đẹp ghê 😎", "Anh em nhớ uống nước nha 💧", "Ai đang onl vậy 🙌", "👺", "👾", "🤖", "💖", "💋", "👀", "😎", "🤞", "✨", "🤤",
+        "Hôm nay trời có đẹp ko ta? ae check dùm tui phát", "Anh em nhớ uống nước nha 💧", "Có ai đang onl không ", "hi",
     ]
     while True:
         try:
@@ -408,8 +408,13 @@ async def random_message_worker():
             await asyncio.sleep(30)
 
 # --- Slash Command: /skibidi ---
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingRole) or isinstance(error, app_commands.CheckFailure):
+        await interaction.response.send_message("❌ Bạn không có quyền dùng lệnh này.", ephemeral=True)
+    else:
+        print(f"LỖI SLASH COMMAND: {error}")
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
-@app_commands.checks.has_role(1412820448499990629)
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message("<a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](<https://guns.lol/dawn_wibu>) *** **✦** <a:cat3:1323314218476372122>")
 
@@ -486,7 +491,6 @@ async def on_ready():
         bot.loop.create_task(activity_heartbeat_worker())
         bot.loop.create_task(random_message_worker())
         bot.loop.create_task(flask_ping_worker())
-        active_developer_maintenance.start()
         print("⚙️ Background workers đã được khởi động.")
 
 # --- Task tự ping Flask để giữ bot active ---
@@ -522,11 +526,12 @@ async def on_member_join(member):
         else:
             image_bytes = await create_welcome_image(member)
         welcome_messages = [
-            f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến với {member.guild.name}!** ✨",
-            f"👋 **Xin chào {member.mention}, chúc bạn chơi vui tại {member.guild.name}**! **<a:cat2:1323314096040448145>**",
-            f"**<a:cat2:1323314096040448145>** **{member.mention} đã gia nhập băng đẳng {member.guild.name}**! 🥳",
-            f"**<a:cat2:1323314096040448145>** **{member.mention} đã join party! Cả team {member.guild.name} ready chưa?**! 🎮",
-            f"🌟 **{member.mention} đã mở khóa map {member.guild.name}! Chúc mừng thí chủ ** **<a:cat2:1323314096040448145>**",
+            f"<a:cat2:1323314096040448145> Chào mừng {member.mention} đã đến với **{member.guild.name}**! <a:w:1375139211967074348>",
+            f"Xin chào {member.mention}, chúc bạn chơi vui tại **{member.guild.name}**! **<a:cat2:1323314096040448145>**",
+            f"<a:cat2:1323314096040448145> {member.mention} đã gia nhập băng đẳng **{member.guild.name}**! <a:w:1323314218476372122>",
+            f"<a:cat2:1323314096040448145> {member.mention} đã join party! **{member.guild.name}**. Are you all ready?! 🎮",
+            f"{member.mention} đã mở khóa map **{member.guild.name}**! Chúc mừng <a:cat2:1323314096040448145>",
+            f"CĂNG! {member.mention} vừa bước vào **{member.guild.name} **<a:cat2:1323314096040448145>",
         ]
         welcome_text = random.choice(welcome_messages)
         await channel.send(welcome_text, file=discord.File(fp=image_bytes, filename='welcome.png'))
@@ -544,21 +549,17 @@ RANK_ROLES = [1416629995534811176,
               1416630670473691260,
               1416630172345565287,
               1368614259595935916, 
-              1368614263324934316, 
-              1368629255654871251, 
-              1322844864760516691]
+              1368614263324934316]
 # Kênh thông báo
 NOTIFY_CHANNEL_ID = 1368613831529726137
 # Map role -> hiển thị đẹp
 ROLE_DISPLAY = {
-    1416629995534811176: "🔥 **Nguyên Tôn**",
-    1368614250603614348: "🪀 **Thượng Cổ Nhân**", 
-    1416630670473691260: "🔮 **Đại Hiền Giả**", 
-    1416630172345565287: "🌀 **Hiền Giả**", 
-    1368614259595935916: "💠 **Cổ Linh**", 
-    1368614263324934316: "🧩 **Tân Hồn**", 
-    1368629255654871251: "⚔️ **Lữ Hành Giả**", 
-    1322844864760516691: "🐣 **Tân Giả**",
+    1416629995534811176: "⛩️ **Daiyōkai〔CẤP 1〕**",
+    1368614250603614348: "👺 **Dai-Tengu〔CẤP 2〕**", 
+    1416630670473691260: "👹 **Kijin〔CẤP 3〕**", 
+    1416630172345565287: "🩸 **Onryō〔CẤP 4〕**", 
+    1368614259595935916: "🏮 **Mononoke〔CẤP 5〕**", 
+    1368614263324934316: "💮 **Shiryō〔CẤP 6〕**",
 }
 
 @bot.event
@@ -578,22 +579,18 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 role_display = ROLE_DISPLAY.get(role.id, role.name)
                 embed = discord.Embed(
                     title="⬆ LEVEL UP ⬆",
-                    description=(f"Xin chúc mừng {after.mention} đã thăng cấp lên {role_display}!"),
+                    description=(f"Ô Mai Gót Tồ {after.mention} đã hóa thành {role_display}!"),
                     color=role.color if role.color.value else discord.Color.gold()
                 )
-                embed.set_thumbnail(url=after.display_avatar.url)
-                await channel.send(embed=embed)
-
-            # TỐI ƯU: Xóa tất cả role thấp hơn trong 1 lần gửi yêu cầu duy nhất
-            role_index = RANK_ROLES.index(role_id)
-            lower_role_ids = set(RANK_ROLES[role_index + 1:])
-            
-            # Tạo danh sách role mới (loại bỏ các role thấp)
-            final_roles = [r for r in after.roles if r.id not in lower_role_ids]
-            
-            if len(final_roles) != len(after.roles):
-                await after.edit(roles=final_roles)
-                print(f"Đã tối ưu: Xóa các role thấp cho {after.display_name}")
+                try:
+                    avatar_bytes = await after.display_avatar.read()
+                    avatar_file = discord.File(io.BytesIO(avatar_bytes), filename="avatar.png")
+                    embed.set_thumbnail(url="attachment://avatar.png")
+                    await channel.send(embed=embed, file=avatar_file)
+                except Exception as e:
+                    print(f"LỖI ĐÍNH KÈM AVATAR LEVEL UP: {e}")
+                    embed.set_thumbnail(url=after.display_avatar.url)
+                    await channel.send(embed=embed)
             break
 # --- Auto Reply theo keyword ---
 # 1. Thiết lập Cooldown: cho phép 1 tin nhắn mỗi 5 giây trên mỗi người dùng
