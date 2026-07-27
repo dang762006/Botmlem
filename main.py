@@ -132,8 +132,9 @@ async def get_dominant_color(image_bytes, color_count=20):
             if l > 0.80: continue
             is_vibrant_and_bright = (l >= 0.5 and s > 0.4)
             is_bright_grayish = (l >= 0.6 and s >= 0.25 and s <= 0.4)
-            if is_vibrant_and_bright:
-                score = s * l
+            is_deep_vibrant = (0.20 <= l < 0.5 and s >= 0.45)
+            if is_vibrant_and_bright or is_deep_vibrant:
+                score = (s * l) if is_vibrant_and_bright else (s * (l + 0.3))
                 qualified_colors.append({'color': color_rgb, 'score': score, 'type': 'vibrant_bright', 'hue_priority': get_hue_priority_index(h)})
             elif is_bright_grayish:
                 score = l * 0.5 + s * 0.5
