@@ -553,6 +553,14 @@ RANK_ROLES = [1416629995534811176,
               1368614263324934316]
 # Kênh thông báo
 NOTIFY_CHANNEL_ID = 1368613831529726137
+ROLE_REWARDS = {
+    1368614263324934316: 1471842726269161565,
+    1509526688252301384: 1530252883348689046,
+    1530556376873570495: 1530252883348689046,
+    1530576982923022467: 1530252883348689046,
+    1530582359617966161: 1530252883348689046,
+    1530258789922771025: 1530252883348689046,
+}
 # Map role -> hiển thị đẹp
 ROLE_DISPLAY = {
     1416629995534811176: "⛩️ **Daiyōkai〔CẤP 1〕**",
@@ -568,9 +576,15 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     before_roles = set(before.roles)
     after_roles = set(after.roles)
     new_roles = after_roles - before_roles
-    
     if not new_roles: return
-    
+
+    for new_role in new_roles:
+        reward_id = ROLE_REWARDS.get(new_role.id)
+        if reward_id:
+            reward_role = after.guild.get_role(reward_id)
+            if reward_role and reward_role not in after.roles:
+                await after.add_roles(reward_role)
+                
     for role_id in RANK_ROLES:
         role = after.guild.get_role(role_id)
         if role in new_roles:
