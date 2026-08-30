@@ -11,6 +11,7 @@ import threading
 import traceback
 from flask import Flask
 from colorthief import ColorThief
+import xml.etree.ElementTree as ET
 
 # --- Khởi tạo Flask app ---
 app = Flask(__name__)
@@ -132,6 +133,8 @@ async def get_dominant_color(image_bytes, color_count=20):
             if l > 0.80: continue
             is_vibrant_and_bright = (l >= 0.5 and s > 0.4)
             is_bright_grayish = (l >= 0.6 and s >= 0.25 and s <= 0.4)
+            # THÊM: bắt các màu đậm nhưng vẫn rất rõ màu (đỏ đô, xanh dương đậm...).
+            # Trước đây nhóm này bị rớt hoàn toàn -> bot lấy nhầm màu da/màu nhạt.
             is_deep_vibrant = (0.20 <= l < 0.5 and s >= 0.45)
             if is_vibrant_and_bright or is_deep_vibrant:
                 score = (s * l) if is_vibrant_and_bright else (s * (l + 0.3))
@@ -368,8 +371,8 @@ async def create_welcome_image(member):
 async def activity_heartbeat_worker():
     await bot.wait_until_ready()
     activities = [
-        discord.Activity(type=discord.ActivityType.watching, name="Youtube Dawn_wibu"),
-        discord.Activity(type=discord.ActivityType.listening, name="Tiếng lòng của em"),
+        discord.Activity(type=discord.ActivityType.watching, name="Dawn_wibu phá đảo game"),
+        discord.Activity(type=discord.ActivityType.listening, name="TRÌNH"),
     ]
     while True:
         try:
@@ -391,7 +394,7 @@ async def random_message_worker():
     print("DEBUG: random_message_worker bắt đầu.")
     channel_id = 1379789952610467971
     messages = [
-        "Hôm nay trời có đẹp ko ta? ae check dùm tui phát", "Anh em nhớ uống nước nha 💧", "Có ai đang onl không ", "hi",
+        "Hôm nay trời đẹp ghê 😎", "Anh em nhớ uống nước nha 💧", "Ai đang onl vậy 🙌", "👺", "👾", "🤖", "💖", "💋", "👀", "😎", "🤞", "✨", "🤤",
     ]
     while True:
         try:
@@ -409,13 +412,8 @@ async def random_message_worker():
             await asyncio.sleep(30)
 
 # --- Slash Command: /skibidi ---
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.MissingRole) or isinstance(error, app_commands.CheckFailure):
-        await interaction.response.send_message("❌ Bạn không có quyền dùng lệnh này.", ephemeral=True)
-    else:
-        print(f"LỖI SLASH COMMAND: {error}")
 @bot.tree.command(name="skibidi", description="Dẫn tới Dawn_wibu.")
+@app_commands.checks.has_role(1412820448499990629)
 async def skibidi(interaction: discord.Interaction):
     await interaction.response.send_message("<a:cat2:1323314096040448145>**✦** *** [AN BA TO KOM](<https://guns.lol/dawn_wibu>) *** **✦** <a:cat3:1323314218476372122>")
 
@@ -463,8 +461,61 @@ async def create_link(interaction: discord.Interaction, url: str, text: str = "L
     await interaction.response.send_message(f"✨ **{user_name}** đã chia sẻ: {formatted_link}")
 
 # --- Slash Command: /newvideo ---
+# CẤU HÌNH: THAY 2 ID DƯỚI ĐÂY THÀNH ID THẬT CỦA SERVER ÔNG
 VIDEO_ANNOUNCE_CHANNEL_ID = 1323357088055037973  # kênh đăng video
 VIDEO_PING_ROLE_ID = 1322878740707151882         # role được ping
+
+# --- Auto-check video YouTube mới (không cần API key) ---
+YOUTUBE_CHANNEL_ID = "UCaM5L7POm-dKgWM6_TdTlpg"
+YOUTUBE_RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+YOUTUBE_CHECK_INTERVAL = 300  # giây (5 phút/lần)
+last_video_id = None
+
+async def check_youtube_new_video():
+    global last_video_id
+    try:
+        async with bot.session.get(YOUTUBE_RSS_URL, timeout=15) as resp:
+            if resp.status != 200:
+                print(f"LỖI YOUTUBE RSS: status {resp.status}")
+                return
+            xml_text = await resp.text()
+
+        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+        root = ET.fromstring(xml_text)
+        entry = root.find('atom:entry', ns)
+        if entry is None:
+            return
+        video_id = entry.find('yt:videoId', ns).text
+
+        if last_video_id is None:
+            # Lần đầu chạy: chỉ ghi nhớ mốc, KHÔNG đăng (tránh spam video cũ lúc bot mới lên)
+            last_video_id = video_id
+            print(f"DEBUG: YouTube auto-check khởi tạo, video mới nhất hiện tại: {video_id}")
+            return
+
+        if video_id != last_video_id:
+            last_video_id = video_id
+            link = f"https://www.youtube.com/watch?v={video_id}"
+            channel = bot.get_channel(VIDEO_ANNOUNCE_CHANNEL_ID)
+            if channel:
+                public_message = (
+                    f"<a:cat2:1323314096040448145> Ây Yô Dawn_wibu vừa ra video mới❗\n"
+                    f"▰▱ [***Xem Ngay***]({link}) ▱▰『||<@&{VIDEO_PING_ROLE_ID}>||』"
+                )
+                await channel.send(public_message)
+                print(f"DEBUG: Đã tự động đăng video mới: {link}")
+    except Exception as e:
+        print(f"LỖI YOUTUBE AUTO-CHECK: {e}")
+
+async def youtube_check_worker():
+    await bot.wait_until_ready()
+    print("DEBUG: youtube_check_worker bắt đầu.")
+    while True:
+        try:
+            await check_youtube_new_video()
+        except Exception as e:
+            print(f"LỖI YOUTUBE WORKER: {e}")
+        await asyncio.sleep(YOUTUBE_CHECK_INTERVAL)
 
 @bot.tree.command(name="newvideo", description="Đăng video YouTube mới kèm ping role.")
 @app_commands.describe(link="Link video YouTube")
@@ -485,12 +536,15 @@ async def newvideo(interaction: discord.Interaction, link: str):
     )
 
     try:
+        # Gửi thẳng vào kênh bằng channel.send() -> KHÔNG hiện "đã dùng /newvideo"
         await channel.send(public_message)
+        # Xác nhận riêng cho người dùng lệnh, chỉ họ thấy được
         await interaction.response.send_message("✅ Đã đăng video vào kênh!", ephemeral=True)
     except discord.Forbidden:
         await interaction.response.send_message("⚠️ Bot không có quyền gửi tin nhắn/ping role trong kênh đó.", ephemeral=True)
     except Exception as e:
         await interaction.response.send_message(f"❌ Lỗi khi đăng video: `{e}`", ephemeral=True)
+
 # --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
@@ -522,6 +576,10 @@ async def on_ready():
         bot.loop.create_task(activity_heartbeat_worker())
         bot.loop.create_task(random_message_worker())
         bot.loop.create_task(flask_ping_worker())
+        bot.loop.create_task(youtube_check_worker())
+        # ĐÃ SỬA: bỏ dòng "active_developer_maintenance.start()" vì biến này
+        # chưa từng được định nghĩa ở đâu trong file -> gọi vào sẽ crash
+        # ngay khi bot vừa lên (NameError). Giữ lại 3 worker còn lại là đủ.
         print("⚙️ Background workers đã được khởi động.")
 
 # --- Task tự ping Flask để giữ bot active ---
@@ -557,12 +615,11 @@ async def on_member_join(member):
         else:
             image_bytes = await create_welcome_image(member)
         welcome_messages = [
-            f"<a:cat2:1323314096040448145> Chào mừng {member.mention} đã đến với **{member.guild.name}**! <a:w:1375139211967074348>",
-            f"Xin chào {member.mention}, chúc bạn chơi vui tại **{member.guild.name}**! **<a:cat2:1323314096040448145>**",
-            f"<a:cat2:1323314096040448145> {member.mention} đã gia nhập băng đẳng **{member.guild.name}**! <a:w:1323314218476372122>",
-            f"<a:cat2:1323314096040448145> {member.mention} đã join party! **{member.guild.name}**. Are you all ready?! 🎮",
-            f"{member.mention} đã mở khóa map **{member.guild.name}**! Chúc mừng <a:cat2:1323314096040448145>",
-            f"CĂNG! {member.mention} vừa bước vào **{member.guild.name} **<a:cat2:1323314096040448145>",
+            f"**<a:cat2:1323314096040448145>** **Chào mừng {member.mention} đã đến với {member.guild.name}!** ✨",
+            f"👋 **Xin chào {member.mention}, chúc bạn chơi vui tại {member.guild.name}**! **<a:cat2:1323314096040448145>**",
+            f"**<a:cat2:1323314096040448145>** **{member.mention} đã gia nhập băng đẳng {member.guild.name}**! 🥳",
+            f"**<a:cat2:1323314096040448145>** **{member.mention} đã join party! Cả team {member.guild.name} ready chưa?**! 🎮",
+            f"🌟 **{member.mention} đã mở khóa map {member.guild.name}! Chúc mừng thí chủ ** **<a:cat2:1323314096040448145>**",
         ]
         welcome_text = random.choice(welcome_messages)
         await channel.send(welcome_text, file=discord.File(fp=image_bytes, filename='welcome.png'))
@@ -574,6 +631,7 @@ async def on_member_join(member):
         print(f"LỖỖI CHÀO MỪNG KHÁC: Lỗi khi tạo hoặc gửi ảnh chào mừng: {e}")
         await channel.send(f"Chào mừng {member.mention} đã đến với {member.guild.name}!")
         
+# ==================== BẢNG XẾP HẠNG (6 CẤP THEO ẢNH MỚI) ====================
 # Danh sách role xếp hạng (cao -> thấp)
 RANK_ROLES = [1416629995534811176,
               1368614250603614348,
@@ -592,29 +650,33 @@ ROLE_REWARDS = {
     1530258789922771025: 1530252883348689046,
 }
 # Map role -> hiển thị đẹp
+# LƯU Ý: icon Dai-Tengu/Kijin ở đây đã đảo lại cho KHỚP ảnh gốc
+# (Dai-Tengu = 👹, Kijin = 👺). Nếu ông cố ý muốn đảo ngược thì đổi lại nhé.
 ROLE_DISPLAY = {
     1416629995534811176: "⛩️ **Daiyōkai〔CẤP 1〕**",
-    1368614250603614348: "👺 **Dai-Tengu〔CẤP 2〕**", 
-    1416630670473691260: "👹 **Kijin〔CẤP 3〕**", 
+    1368614250603614348: "👹 **Dai-Tengu〔CẤP 2〕**", 
+    1416630670473691260: "👺 **Kijin〔CẤP 3〕**", 
     1416630172345565287: "🩸 **Onryō〔CẤP 4〕**", 
     1368614259595935916: "🏮 **Mononoke〔CẤP 5〕**", 
     1368614263324934316: "💮 **Shiryō〔CẤP 6〕**",
 }
+# ====================================================================================
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     before_roles = set(before.roles)
     after_roles = set(after.roles)
     new_roles = after_roles - before_roles
+    
     if not new_roles: return
-
+    
     for new_role in new_roles:
         reward_id = ROLE_REWARDS.get(new_role.id)
         if reward_id:
             reward_role = after.guild.get_role(reward_id)
             if reward_role and reward_role not in after.roles:
                 await after.add_roles(reward_role)
-                
+    
     for role_id in RANK_ROLES:
         role = after.guild.get_role(role_id)
         if role in new_roles:
@@ -627,6 +689,8 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                     description=(f"Ô Mai Gót Tồ {after.mention} đã hóa thành {role_display}!"),
                     color=role.color if role.color.value else discord.Color.gold()
                 )
+                # SỬA: đính kèm avatar dạng file thay vì chỉ dán URL, để tin nhắn
+                # cũ không phụ thuộc vào việc Discord còn giữ URL avatar cũ hay không.
                 try:
                     avatar_bytes = await after.display_avatar.read()
                     avatar_file = discord.File(io.BytesIO(avatar_bytes), filename="avatar.png")
@@ -636,6 +700,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                     print(f"LỖI ĐÍNH KÈM AVATAR LEVEL UP: {e}")
                     embed.set_thumbnail(url=after.display_avatar.url)
                     await channel.send(embed=embed)
+
+            # GHI CHÚ: đã bỏ đoạn tự động xóa các role cấp thấp hơn theo yêu cầu.
+            # Giờ lên cấp cao hơn thì role cũ vẫn được giữ nguyên, chỉ cộng thêm role mới.
             break
 # --- Auto Reply theo keyword ---
 # 1. Thiết lập Cooldown: cho phép 1 tin nhắn mỗi 5 giây trên mỗi người dùng
@@ -655,7 +722,7 @@ async def on_message(message):
         "ping": "Pong 🏓",
         "hello": f"Chào {message.author.mention} 😎",
         "hi": f"Chào {message.author.mention} <a:2:1387245423185498265>",
-        "có ai ko": f"Có tui nè {message.author.mention} 😘"
+        "có ai ko": f"Có tui nè {message.author.mention} 😘"
     }
 
     # 2. Kiểm tra xem nội dung có khớp TUYỆT ĐỐI trong danh sách không
