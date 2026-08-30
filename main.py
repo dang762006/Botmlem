@@ -461,6 +461,36 @@ async def create_link(interaction: discord.Interaction, url: str, text: str = "L
     
     # Gửi tin nhắn kèm tên người dùng
     await interaction.response.send_message(f"✨ **{user_name}** đã chia sẻ: {formatted_link}")
+
+# --- Slash Command: /newvideo ---
+VIDEO_ANNOUNCE_CHANNEL_ID = 1323357088055037973  # kênh đăng video
+VIDEO_PING_ROLE_ID = 1322878740707151882         # role được ping
+
+@bot.tree.command(name="newvideo", description="Đăng video YouTube mới kèm ping role.")
+@app_commands.describe(link="Link video YouTube")
+@app_commands.checks.has_permissions(administrator=True)
+async def newvideo(interaction: discord.Interaction, link: str):
+    if not link.startswith(("http://", "https://")):
+        await interaction.response.send_message("⚠️ Link không hợp lệ!", ephemeral=True)
+        return
+
+    channel = bot.get_channel(VIDEO_ANNOUNCE_CHANNEL_ID)
+    if channel is None:
+        await interaction.response.send_message("⚠️ Không tìm thấy kênh để đăng, kiểm tra lại VIDEO_ANNOUNCE_CHANNEL_ID.", ephemeral=True)
+        return
+
+    public_message = (
+        f"<a:cat2:1323314096040448145> Ây Yô Dawn_wibu vừa ra video mới❗\n"
+        f"▰▱ [***Xem Ngay***]({link}) ▱▰『||<@&{VIDEO_PING_ROLE_ID}>||』"
+    )
+
+    try:
+        await channel.send(public_message)
+        await interaction.response.send_message("✅ Đã đăng video vào kênh!", ephemeral=True)
+    except discord.Forbidden:
+        await interaction.response.send_message("⚠️ Bot không có quyền gửi tin nhắn/ping role trong kênh đó.", ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"❌ Lỗi khi đăng video: `{e}`", ephemeral=True)
 # --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
