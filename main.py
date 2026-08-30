@@ -499,7 +499,7 @@ async def check_youtube_new_video():
             channel = bot.get_channel(VIDEO_ANNOUNCE_CHANNEL_ID)
             if channel:
                 public_message = (
-                    f"<a:cat2:1323314096040448145> Ây Yô Dawn_wibu vừa ra video mới❗\n"
+                    f"<a:cat2:1323314096040448145> **Ây Yô Dawn_wibu vừa ra video mới**❗\n"
                     f"▰▱ [***Xem Ngay***]({link}) ▱▰『||<@&{VIDEO_PING_ROLE_ID}>||』"
                 )
                 await channel.send(public_message)
