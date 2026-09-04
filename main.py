@@ -492,7 +492,7 @@ last_video_id = None
 
 # --- Cấu hình WebSub (PubSubHubbub) để nhận thông báo gần như tức thì ---
 PUBSUBHUBBUB_HUB = "https://pubsubhubbub.appspot.com/subscribe"
-YOUTUBE_TOPIC_URL = f"https://www.youtube.com/xml/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+YOUTUBE_TOPIC_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
 # THAY DÒNG DƯỚI: domain public thật của bot ông (đang thấy trong flask_ping_worker là botmlem.onrender.com)
 WEBHOOK_CALLBACK_URL = "https://botmlem.onrender.com/youtube-webhook"
 
