@@ -548,7 +548,8 @@ async def websub_resubscribe_worker():
 async def check_youtube_new_video():
     global last_video_id
     try:
-        async with bot.session.get(YOUTUBE_RSS_URL, timeout=15) as resp:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        async with bot.session.get(YOUTUBE_RSS_URL, headers=headers, timeout=15) as resp:
             if resp.status != 200:
                 print(f"LỖI YOUTUBE RSS: status {resp.status}")
                 return
