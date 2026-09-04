@@ -9,12 +9,31 @@ import asyncio
 import random
 import threading
 import traceback
-from flask import Flask
+from flask import Flask, request, Response
 from colorthief import ColorThief
 import xml.etree.ElementTree as ET
 
 # --- Khởi tạo Flask app ---
 app = Flask(__name__)
+
+# --- Biến giữ event loop thật của bot, để Flask (chạy ở thread riêng) gọi được coroutine ---
+BOT_EVENT_LOOP = None
+
+@app.route('/youtube-webhook', methods=['GET'])
+def youtube_webhook_verify():
+    """YouTube gọi GET để xác nhận đăng ký, phải echo lại đúng hub.challenge."""
+    challenge = request.args.get('hub.challenge')
+    if challenge:
+        return Response(challenge, status=200, mimetype='text/plain')
+    return "missing hub.challenge", 400
+
+@app.route('/youtube-webhook', methods=['POST'])
+def youtube_webhook_notify():
+    """YouTube POST tới đây mỗi khi có video mới."""
+    xml_data = request.data
+    if BOT_EVENT_LOOP is not None:
+        asyncio.run_coroutine_threadsafe(handle_youtube_notification(xml_data), BOT_EVENT_LOOP)
+    return "", 204
 
 @app.route("/ping/<token>")
 def ping_token(token):
@@ -468,8 +487,63 @@ VIDEO_PING_ROLE_ID = 1322878740707151882         # role được ping
 # --- Auto-check video YouTube mới (không cần API key) ---
 YOUTUBE_CHANNEL_ID = "UCaM5L7POm-dKgWM6_TdTlpg"
 YOUTUBE_RSS_URL = f"https://www.youtube.com/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
-YOUTUBE_CHECK_INTERVAL = 300  # giây (5 phút/lần)
+YOUTUBE_CHECK_INTERVAL = 900  # giây (15 phút/lần) - giờ chỉ là lưới an toàn dự phòng
 last_video_id = None
+
+# --- Cấu hình WebSub (PubSubHubbub) để nhận thông báo gần như tức thì ---
+PUBSUBHUBBUB_HUB = "https://pubsubhubbub.appspot.com/subscribe"
+YOUTUBE_TOPIC_URL = f"https://www.youtube.com/xml/feeds/videos.xml?channel_id={YOUTUBE_CHANNEL_ID}"
+# THAY DÒNG DƯỚI: domain public thật của bot ông (đang thấy trong flask_ping_worker là botmlem.onrender.com)
+WEBHOOK_CALLBACK_URL = "https://botmlem.onrender.com/youtube-webhook"
+
+async def handle_youtube_notification(xml_bytes):
+    """Được gọi khi Flask nhận POST từ YouTube báo có video mới."""
+    global last_video_id
+    try:
+        ns = {'atom': 'http://www.w3.org/2005/Atom', 'yt': 'http://www.youtube.com/xml/schemas/2015'}
+        root = ET.fromstring(xml_bytes)
+        entry = root.find('atom:entry', ns)
+        if entry is None:
+            return
+        video_id = entry.find('yt:videoId', ns).text
+
+        if video_id == last_video_id:
+            return  # trùng video đã đăng rồi (WebSub đôi khi gửi lặp), bỏ qua
+
+        last_video_id = video_id
+        link = f"https://www.youtube.com/watch?v={video_id}"
+        channel = bot.get_channel(VIDEO_ANNOUNCE_CHANNEL_ID)
+        if channel:
+            public_message = (
+                f"<a:cat2:1323314096040448145> Ây Yô Dawn_wibu vừa ra video mới❗\n"
+                f"▰▱ [***Xem Ngay***]({link}) ▱▰『||<@&{VIDEO_PING_ROLE_ID}>||』"
+            )
+            await channel.send(public_message)
+            print(f"DEBUG: [WebSub] Đã tự động đăng video mới: {link}")
+    except Exception as e:
+        print(f"LỖI XỬ LÝ WEBSUB NOTIFICATION: {e}")
+
+async def subscribe_youtube_websub():
+    """Đăng ký (hoặc gia hạn) với YouTube để nhận push notification."""
+    try:
+        data = {
+            "hub.mode": "subscribe",
+            "hub.topic": YOUTUBE_TOPIC_URL,
+            "hub.callback": WEBHOOK_CALLBACK_URL,
+            "hub.verify": "async",
+            "hub.lease_seconds": "432000",  # 5 ngày
+        }
+        async with bot.session.post(PUBSUBHUBBUB_HUB, data=data, timeout=15) as resp:
+            print(f"DEBUG: Đăng ký WebSub YouTube, status={resp.status}")
+    except Exception as e:
+        print(f"LỖI ĐĂNG KÝ WEBSUB: {e}")
+
+async def websub_resubscribe_worker():
+    """Đăng ký lại định kỳ vì WebSub hết hạn sau ~5 ngày (lease_seconds)."""
+    await bot.wait_until_ready()
+    while True:
+        await subscribe_youtube_websub()
+        await asyncio.sleep(4 * 24 * 60 * 60)  # gia hạn mỗi 4 ngày, trước khi hết hạn 5 ngày
 
 async def check_youtube_new_video():
     global last_video_id
@@ -499,7 +573,7 @@ async def check_youtube_new_video():
             channel = bot.get_channel(VIDEO_ANNOUNCE_CHANNEL_ID)
             if channel:
                 public_message = (
-                    f"<a:cat2:1323314096040448145> **Ây Yô Dawn_wibu vừa ra video mới**❗\n"
+                    f"<a:cat2:1323314096040448145> Ây Yô Dawn_wibu vừa ra video mới❗\n"
                     f"▰▱ [***Xem Ngay***]({link}) ▱▰『||<@&{VIDEO_PING_ROLE_ID}>||』"
                 )
                 await channel.send(public_message)
@@ -548,7 +622,9 @@ async def newvideo(interaction: discord.Interaction, link: str):
 # --- Sự kiện on_ready ---
 @bot.event
 async def on_ready():
-    global IMAGE_GEN_SEMAPHORE
+    global IMAGE_GEN_SEMAPHORE, BOT_EVENT_LOOP
+    # Ghi lại event loop thật của bot -> để route Flask (chạy ở thread riêng) gọi được coroutine
+    BOT_EVENT_LOOP = asyncio.get_running_loop()
     # THÊM DÒNG NÀY: Khởi tạo session để tải ảnh nhanh hơn
     if not hasattr(bot, 'session'):
         bot.session = aiohttp.ClientSession()
@@ -577,6 +653,7 @@ async def on_ready():
         bot.loop.create_task(random_message_worker())
         bot.loop.create_task(flask_ping_worker())
         bot.loop.create_task(youtube_check_worker())
+        bot.loop.create_task(websub_resubscribe_worker())
         # ĐÃ SỬA: bỏ dòng "active_developer_maintenance.start()" vì biến này
         # chưa từng được định nghĩa ở đâu trong file -> gọi vào sẽ crash
         # ngay khi bot vừa lên (NameError). Giữ lại 3 worker còn lại là đủ.
